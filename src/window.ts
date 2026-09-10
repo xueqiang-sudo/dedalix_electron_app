@@ -182,7 +182,7 @@ export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
     mainWindow.webContents.setWindowOpenHandler(handleWindowOpen);
 
     // Inject 宋体 (SimSun) font — main frame via insertCSS, iframes via preload
-    const FONT_CSS = '*, *::before, *::after, body, html, input, textarea, select, button, p, span, div, a, h1, h2, h3, h4, h5, h6, li, td, th, label, em, strong { font-family: "SimSun", "宋体", "NSimSun", serif !important; }';
+    const FONT_CSS = '*, *::before, *::after, body, html, input, textarea, select, button, p, span, div, a, h1, h2, h3, h4, h5, h6, li, td, th, label, em, strong { font-family: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", Arial, sans-serif !important; }';
 
     const injectFont = () => {
         if (!mainWindow || mainWindow.isDestroyed()) return;

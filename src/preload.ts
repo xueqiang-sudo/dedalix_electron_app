@@ -11,7 +11,7 @@ import {version} from '../package.json';
 
 // ─── Inject 宋体 font into every frame (preload runs in iframes too) ───
 (function injectFont() {
-    const FONT_CSS = '*, *::before, *::after, body, html, input, textarea, select, button, p, span, div, a, h1, h2, h3, h4, h5, h6, li, td, th, label, em, strong { font-family: "SimSun", "宋体", "NSimSun", serif !important; }';
+    const FONT_CSS = '*, *::before, *::after, body, html, input, textarea, select, button, p, span, div, a, h1, h2, h3, h4, h5, h6, li, td, th, label, em, strong { font-family: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", Arial, sans-serif !important; }';
 
     function apply() {
         if (!document.getElementById('dedalix-font-override')) {
