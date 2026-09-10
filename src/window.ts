@@ -131,6 +131,7 @@ export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
         minHeight: MIN_HEIGHT,
         title: 'Dedalix',
         show: false, // Show after ready-to-show
+        autoHideMenuBar: true, // Force hide menu bar
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -146,6 +147,10 @@ export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
     }
 
     mainWindow = new BrowserWindow(windowOptions);
+
+    // Force hide menu bar (multiple methods for reliability, matching optibot-erp-desktop)
+    mainWindow.setMenuBarVisibility(false);
+    mainWindow.removeMenu();
 
     // Set custom User-Agent
     mainWindow.webContents.userAgent = buildUserAgent();
@@ -176,15 +181,34 @@ export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
     // Handle new-window requests (target="_blank" links)
     mainWindow.webContents.setWindowOpenHandler(handleWindowOpen);
 
-    // Inject 宋体 (SimSun) font after every page load and navigation
-    const injectFontCSS = () => {
-        mainWindow?.webContents.insertCSS(
-            '*, *::before, *::after, body, html, input, textarea, select, button { font-family: "SimSun", "宋体", serif !important; }'
-        );
+    // Inject 宋体 (SimSun) font — main frame via insertCSS, iframes via preload
+    const FONT_CSS = '*, *::before, *::after, body, html, input, textarea, select, button, p, span, div, a, h1, h2, h3, h4, h5, h6, li, td, th, label, em, strong { font-family: "SimSun", "宋体", "NSimSun", serif !important; }';
+
+    const injectFont = () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        mainWindow.webContents.insertCSS(FONT_CSS);
+        // Also inject into iframes via executeJavaScript
+        mainWindow.webContents.executeJavaScript(`
+            (function() {
+                const css = '${FONT_CSS}';
+                document.querySelectorAll('iframe').forEach(function(iframe) {
+                    try {
+                        var doc = iframe.contentDocument;
+                        if (doc && doc.head) {
+                            var style = doc.createElement('style');
+                            style.textContent = css;
+                            doc.head.appendChild(style);
+                        }
+                    } catch(e) {}
+                });
+            })();
+        `).catch(() => {});
     };
-    mainWindow.webContents.on('did-finish-load', injectFontCSS);
-    mainWindow.webContents.on('did-navigate', injectFontCSS);
-    mainWindow.webContents.on('did-navigate-in-page', injectFontCSS);
+
+    mainWindow.webContents.on('did-finish-load', injectFont);
+    mainWindow.webContents.on('did-navigate', injectFont);
+    mainWindow.webContents.on('did-navigate-in-page', injectFont);
+    mainWindow.webContents.on('did-frame-finish-load', injectFont);
 
     // Navigate to the deep-link URL or the default app URL
     const targetUrl = deepLinkUrl
