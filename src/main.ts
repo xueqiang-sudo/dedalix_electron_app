@@ -8,7 +8,7 @@
  *   4. Handle deep links from protocol invocations (macOS open-url, Windows second-instance)
  */
 
-import {app, BrowserWindow} from 'electron';
+import {app, BrowserWindow, Menu} from 'electron';
 
 import {
     registerProtocol,
@@ -17,6 +17,9 @@ import {
 } from './protocol';
 import {createMainWindow, showMainWindow, getMainWindow} from './window';
 import {createTray, destroyTray} from './tray';
+
+// ─── Remove default menu (File, Edit, View, etc.) ──────────────────────
+Menu.setApplicationMenu(null);
 
 // ─── Step 1: Enforce single instance ────────────────────────────────────
 const gotTheLock = app.requestSingleInstanceLock();

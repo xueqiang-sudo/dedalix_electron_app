@@ -176,6 +176,16 @@ export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
     // Handle new-window requests (target="_blank" links)
     mainWindow.webContents.setWindowOpenHandler(handleWindowOpen);
 
+    // Inject 宋体 (SimSun) font after every page load and navigation
+    const injectFontCSS = () => {
+        mainWindow?.webContents.insertCSS(
+            '*, *::before, *::after, body, html, input, textarea, select, button { font-family: "SimSun", "宋体", serif !important; }'
+        );
+    };
+    mainWindow.webContents.on('did-finish-load', injectFontCSS);
+    mainWindow.webContents.on('did-navigate', injectFontCSS);
+    mainWindow.webContents.on('did-navigate-in-page', injectFontCSS);
+
     // Navigate to the deep-link URL or the default app URL
     const targetUrl = deepLinkUrl
         ? deepLinkUrl.replace(/^dedalix:/i, 'https:')
