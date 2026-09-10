@@ -1,0 +1,233 @@
+/**
+ * Window Manager
+ *
+ * Manages the main BrowserWindow: creation, state persistence,
+ * User-Agent injection, and deep-link interception.
+ */
+
+import {app, BrowserWindow, screen} from 'electron';
+import * as path from 'path';
+import * as fs from 'fs';
+
+import {version as appVersion} from '../package.json';
+import {getAppURL, handleWillNavigate, handleWindowOpen} from './protocol';
+
+/**
+ * Get the window state persistence file path.
+ * Uses Electron's userData path (available after app ready).
+ */
+function getStateFilePath(): string {
+    return path.join(app.getPath('userData'), 'window-state.json');
+}
+
+interface WindowState {
+    x?: number;
+    y?: number;
+    width: number;
+    height: number;
+    isMaximized: boolean;
+}
+
+const DEFAULT_WIDTH = 1280;
+const DEFAULT_HEIGHT = 800;
+const MIN_WIDTH = 800;
+const MIN_HEIGHT = 600;
+
+let mainWindow: BrowserWindow | null = null;
+let windowState: WindowState;
+
+/**
+ * Load persisted window state from disk.
+ */
+function loadWindowState(): WindowState {
+    try {
+        const stateFile = getStateFilePath();
+        if (fs.existsSync(stateFile)) {
+            const data = fs.readFileSync(stateFile, 'utf-8');
+            const parsed = JSON.parse(data) as Partial<WindowState>;
+            return {
+                x: parsed.x,
+                y: parsed.y,
+                width: parsed.width || DEFAULT_WIDTH,
+                height: parsed.height || DEFAULT_HEIGHT,
+                isMaximized: parsed.isMaximized || false,
+            };
+        }
+    } catch {
+        // Corrupted or missing — use defaults
+    }
+    return {
+        width: DEFAULT_WIDTH,
+        height: DEFAULT_HEIGHT,
+        isMaximized: false,
+    };
+}
+
+/**
+ * Save current window state to disk.
+ */
+function saveWindowState(win: BrowserWindow): void {
+    const bounds = win.getBounds();
+    const state: WindowState = {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        isMaximized: win.isMaximized(),
+    };
+
+    try {
+        const stateFile = getStateFilePath();
+        const dir = path.dirname(stateFile);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, {recursive: true});
+        }
+        fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
+    } catch {
+        // Ignore write errors
+    }
+}
+
+/**
+ * Validate that the saved window position is still visible on a connected display.
+ */
+function isVisibleOnScreen(state: WindowState): boolean {
+    if (state.x === undefined || state.y === undefined) {
+        return false;
+    }
+
+    const displays = screen.getAllDisplays();
+    return displays.some((display) => {
+        const {x, y, width, height} = display.bounds;
+        return (
+            state.x! >= x - 100 &&
+            state.x! < x + width &&
+            state.y! >= y - 100 &&
+            state.y! < y + height
+        );
+    });
+}
+
+/**
+ * Build the custom User-Agent string.
+ * Appends "Dedalix/{version}" so the webapp can detect the desktop client.
+ */
+function buildUserAgent(): string {
+    return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Dedalix/${appVersion} Chrome/126.0.0.0 Safari/537.36`;
+}
+
+/**
+ * Create the main application window.
+ */
+export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
+    windowState = loadWindowState();
+
+    // Ensure window position is on a visible display
+    const positionOnScreen = isVisibleOnScreen(windowState);
+    const windowOptions: Electron.BrowserWindowConstructorOptions = {
+        width: windowState.width,
+        height: windowState.height,
+        minWidth: MIN_WIDTH,
+        minHeight: MIN_HEIGHT,
+        title: 'Dedalix',
+        show: false, // Show after ready-to-show
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: false,
+            webSecurity: true,
+        },
+    };
+
+    if (positionOnScreen) {
+        windowOptions.x = windowState.x;
+        windowOptions.y = windowState.y;
+    }
+
+    mainWindow = new BrowserWindow(windowOptions);
+
+    // Set custom User-Agent
+    mainWindow.webContents.userAgent = buildUserAgent();
+
+    // Restore maximized state
+    if (windowState.isMaximized) {
+        mainWindow.maximize();
+    }
+
+    // Show window when content is ready
+    mainWindow.once('ready-to-show', () => {
+        mainWindow?.show();
+    });
+
+    // Persist window state on move/resize/close
+    const saveState = () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            saveWindowState(mainWindow);
+        }
+    };
+    mainWindow.on('resize', saveState);
+    mainWindow.on('move', saveState);
+    mainWindow.on('close', saveState);
+
+    // Intercept navigation events for dedalix:// protocol
+    mainWindow.webContents.on('will-navigate', handleWillNavigate);
+
+    // Handle new-window requests (target="_blank" links)
+    mainWindow.webContents.setWindowOpenHandler(handleWindowOpen);
+
+    // Navigate to the deep-link URL or the default app URL
+    const targetUrl = deepLinkUrl
+        ? deepLinkUrl.replace(/^dedalix:/i, 'https:')
+        : getAppURL();
+
+    mainWindow.loadURL(targetUrl).catch((err) => {
+        console.error(`[window] Failed to load ${targetUrl}:`, err);
+    });
+
+    // Handle window close
+    mainWindow.on('closed', () => {
+        mainWindow = null;
+    });
+
+    return mainWindow;
+}
+
+/**
+ * Get the current main window instance.
+ */
+export function getMainWindow(): BrowserWindow | null {
+    return mainWindow;
+}
+
+/**
+ * Show and focus the main window.
+ * Unminimizes if minimized.
+ */
+export function showMainWindow(): void {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        return;
+    }
+
+    if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+    }
+
+    mainWindow.show();
+    mainWindow.focus();
+}
+
+/**
+ * Toggle window visibility (for tray click).
+ */
+export function toggleMainWindow(): void {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        return;
+    }
+
+    if (mainWindow.isVisible()) {
+        mainWindow.hide();
+    } else {
+        showMainWindow();
+    }
+}

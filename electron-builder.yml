@@ -1,0 +1,70 @@
+appId: cn.optibot.dedalix
+productName: Dedalix
+copyright: Copyright © 2024 Optibot
+
+protocols:
+  - name: Dedalix
+    schemes:
+      - dedalix
+
+directories:
+  output: build_dist
+  buildResources: resources
+
+files:
+  - dist/**/*
+  - package.json
+
+extraMetadata:
+  main: dist/main.js
+
+mac:
+  category: public.app-category.business
+  icon: resources/icon.icns
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+win:
+  icon: resources/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerLanguages:
+    - zh-CN
+    - en-US
+  language: 2052
+
+linux:
+  icon: resources/icon.png
+  category: Network
+  target:
+    - target: deb
+      arch:
+        - x64
+    - target: AppImage
+      arch:
+        - x64
+    - target: rpm
+      arch:
+        - x64

@@ -1,0 +1,27 @@
+{
+  "name": "dedalix",
+  "version": "1.0.0",
+  "description": "Dedalix 协作平台桌面客户端",
+  "main": "dist/main.js",
+  "author": "Optibot",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "start": "npm run build && electron .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  }
+}

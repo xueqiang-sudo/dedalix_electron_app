@@ -1,0 +1,279 @@
+name: Build Dedalix Desktop
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g., 1.0.0)'
+        required: false
+        default: ''
+
+# Grant write permission to create releases
+permissions:
+  contents: write
+
+# Default shell for all jobs: bash (works on Windows/Mac/Linux)
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-windows:
+    name: Build Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify source code
+        run: |
+          echo "=== Building commit: $(git rev-parse --short HEAD) ==="
+          echo "=== Commit message: $(git log -1 --pretty=format:'%s') ==="
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          npm cache clean --force
+          npm install
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(node -p "require('./package.json').version")
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Windows installer
+        run: npm run dist:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dedalix-Windows-${{ steps.version.outputs.version }}-${{ github.sha }}
+          path: |
+            build_dist/*.exe
+            build_dist/latest.yml
+          retention-days: 30
+
+  build-mac:
+    name: Build macOS
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify source code
+        run: |
+          echo "=== Building commit: $(git rev-parse --short HEAD) ==="
+          echo "=== Commit message: $(git log -1 --pretty=format:'%s') ==="
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          npm cache clean --force
+          npm install
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(node -p "require('./package.json').version")
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build macOS installer
+        run: npm run dist:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dedalix-macOS-${{ steps.version.outputs.version }}-${{ github.sha }}
+          path: |
+            build_dist/*.dmg
+            build_dist/*.zip
+            build_dist/latest-mac.yml
+          retention-days: 30
+
+  build-linux:
+    name: Build Linux x64
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify source code
+        run: |
+          echo "=== Building commit: $(git rev-parse --short HEAD) ==="
+          echo "=== Commit message: $(git log -1 --pretty=format:'%s') ==="
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          npm cache clean --force
+          npm install
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(node -p "require('./package.json').version")
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Linux installer
+        run: npm run dist:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dedalix-Linux-${{ steps.version.outputs.version }}-${{ github.sha }}
+          path: |
+            build_dist/*.deb
+            build_dist/*.AppImage
+            build_dist/*.rpm
+            build_dist/latest-linux.yml
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs: [build-windows, build-mac, build-linux]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(node -p "require('./package.json').version")
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Dedalix-Windows-*
+          path: artifacts/
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Dedalix-macOS-*
+          path: artifacts/
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Dedalix-Linux-*
+          path: artifacts/
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== Artifacts directory structure ==="
+          find artifacts -type f || echo "No files found in artifacts/"
+          echo ""
+          echo "=== File sizes ==="
+          find artifacts -type f -exec ls -lh {} \; || true
+
+      # Tag push: Official Release
+      - name: Create Tag Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*.exe
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
+            artifacts/**/*.deb
+            artifacts/**/*.AppImage
+            artifacts/**/*.rpm
+            artifacts/**/latest*.yml
+          draft: "false"
+          prerelease: "false"
+          generate_release_notes: "true"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Check if dev build release already exists
+      - name: Check if dev release exists
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        id: check_release
+        run: |
+          TAG="dev-${{ github.sha }}"
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG")
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Release $TAG already exists, skipping"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Push main / manual trigger: Dev Build Release
+      - name: Create Dev Build Release
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') && steps.check_release.outputs.exists == 'false' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev-${{ github.sha }}
+          name: Dev Build v${{ steps.version.outputs.version }} (${{ github.sha }})
+          body: |
+            **Dev Build** — commit `${{ github.sha }}`
+            Branch: `${{ github.ref_name }}`
+            Version: ${{ steps.version.outputs.version }}
+          files: |
+            artifacts/**/*.exe
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
+            artifacts/**/*.deb
+            artifacts/**/*.AppImage
+            artifacts/**/*.rpm
+            artifacts/**/latest*.yml
+          draft: "false"
+          prerelease: "true"
+          make_latest: "false"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
