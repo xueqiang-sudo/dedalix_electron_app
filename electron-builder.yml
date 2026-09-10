@@ -49,6 +49,7 @@ win:
 
 nsis:
   oneClick: false
+  perMachine: true
   allowToChangeInstallationDirectory: true
   installerLanguages:
     - zh-CN

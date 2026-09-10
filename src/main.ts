@@ -60,6 +60,10 @@ if (!gotTheLock) {
 
     // App is ready — create the main window
     app.whenReady().then(() => {
+        // Re-register protocol after app ready as a safety net (Windows)
+        // Some Windows versions need this after the installer runs
+        registerProtocol();
+
         // Check for a deep link from cold-start argv (Windows/Linux)
         const coldStartDeepLink =
             pendingDeepLink || getDeepLinkURL(process.argv.slice(1));

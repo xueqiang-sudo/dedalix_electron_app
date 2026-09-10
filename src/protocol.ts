@@ -24,14 +24,17 @@ export const PROTOCOL = 'dedalix';
 export function registerProtocol(): void {
     const isDev = !app.isPackaged;
 
+    let success: boolean;
     if (isDev) {
         // In development, use a separate protocol to avoid conflicts
-        app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [
+        success = app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [
             path.resolve(process.argv[1] || ''),
         ]);
     } else {
-        app.setAsDefaultProtocolClient(PROTOCOL);
+        success = app.setAsDefaultProtocolClient(PROTOCOL);
     }
+
+    console.log(`[protocol] setAsDefaultProtocolClient('${PROTOCOL}'): ${success}`);
 }
 
 /**
