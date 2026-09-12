@@ -5,7 +5,7 @@
  * User-Agent injection, and deep-link interception.
  */
 
-import {app, BrowserWindow, dialog, globalShortcut, ipcMain, screen} from 'electron';
+import {app, BrowserWindow, dialog, screen} from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -109,13 +109,6 @@ function isVisibleOnScreen(state: WindowState): boolean {
     });
 }
 
-/**
- * Build the custom User-Agent string.
- * Appends "Dedalix/{version}" so the webapp can detect the desktop client.
- */
-function buildUserAgent(): string {
-    return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Dedalix/${appVersion} Chrome/126.0.0.0 Safari/537.36`;
-}
 
 /**
  * Create the main application window.
@@ -153,8 +146,8 @@ export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
     mainWindow.setMenuBarVisibility(false);
     mainWindow.removeMenu();
 
-    // Set custom User-Agent
-    mainWindow.webContents.userAgent = buildUserAgent();
+    // Append Dedalix/{version} to the real Electron User-Agent
+    mainWindow.webContents.userAgent += ` Dedalix/${appVersion}`;
 
     // Restore maximized state
     if (windowState.isMaximized) {
@@ -244,20 +237,14 @@ export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
         mainWindow = null;
     });
 
-    // ─── Ctrl+Shift+R: force reload (ignore cache) ──────────────────
-    globalShortcut.register('CommandOrControl+Shift+R', () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.reloadIgnoringCache();
+    // ─── Ctrl+Shift+R: force reload (only when window is focused) ───
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+        if (input.control && input.shift && input.key.toLowerCase() === 'r') {
+            event.preventDefault();
+            mainWindow?.webContents.reloadIgnoringCache();
         }
     });
 
-    // ─── IPC: force reload from preload (dropdown menu) ─────────────
-    ipcMain.removeAllListeners('dedalix:force-reload');
-    ipcMain.on('dedalix:force-reload', () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.reloadIgnoringCache();
-        }
-    });
 
     // When app.quit() is called (from tray or system), skip confirmation
     app.on('before-quit', () => {
