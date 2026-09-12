@@ -8,7 +8,7 @@
  *   4. Handle deep links from protocol invocations (macOS open-url, Windows second-instance)
  */
 
-import {app, BrowserWindow, Menu} from 'electron';
+import {app, BrowserWindow, globalShortcut, Menu} from 'electron';
 
 import {
     registerProtocol,
@@ -96,5 +96,6 @@ if (!gotTheLock) {
 
     app.on('before-quit', () => {
         destroyTray();
+        globalShortcut.unregisterAll();
     });
 }

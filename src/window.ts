@@ -5,7 +5,7 @@
  * User-Agent injection, and deep-link interception.
  */
 
-import {app, BrowserWindow, screen} from 'electron';
+import {app, BrowserWindow, dialog, globalShortcut, screen} from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -35,6 +35,7 @@ const MIN_HEIGHT = 600;
 
 let mainWindow: BrowserWindow | null = null;
 let windowState: WindowState;
+let isQuitting = false;
 
 /**
  * Load persisted window state from disk.
@@ -219,9 +220,40 @@ export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
         console.error(`[window] Failed to load ${targetUrl}:`, err);
     });
 
-    // Handle window close
+    // ─── Close confirmation dialog ──────────────────────────────────
+    mainWindow.on('close', (event) => {
+        if (!isQuitting) {
+            event.preventDefault();
+            saveState();
+            const choice = dialog.showMessageBoxSync(mainWindow!, {
+                type: 'question',
+                buttons: ['确定', '取消'],
+                defaultId: 0,
+                cancelId: 1,
+                title: '退出确认',
+                message: '确定要退出 Dedalix 吗？',
+            });
+            if (choice === 0) {
+                isQuitting = true;
+                mainWindow?.destroy();
+            }
+        }
+    });
+
     mainWindow.on('closed', () => {
         mainWindow = null;
+    });
+
+    // ─── Ctrl+Shift+R: force reload (ignore cache) ──────────────────
+    globalShortcut.register('CommandOrControl+Shift+R', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.reloadIgnoringCache();
+        }
+    });
+
+    // When app.quit() is called (from tray or system), skip confirmation
+    app.on('before-quit', () => {
+        isQuitting = true;
     });
 
     return mainWindow;
