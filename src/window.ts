@@ -5,7 +5,7 @@
  * User-Agent injection, and deep-link interception.
  */
 
-import {app, BrowserWindow, dialog, globalShortcut, screen} from 'electron';
+import {app, BrowserWindow, dialog, globalShortcut, ipcMain, screen} from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -246,6 +246,14 @@ export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
 
     // ─── Ctrl+Shift+R: force reload (ignore cache) ──────────────────
     globalShortcut.register('CommandOrControl+Shift+R', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.reloadIgnoringCache();
+        }
+    });
+
+    // ─── IPC: force reload from preload (dropdown menu) ─────────────
+    ipcMain.removeAllListeners('dedalix:force-reload');
+    ipcMain.on('dedalix:force-reload', () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.reloadIgnoringCache();
         }
