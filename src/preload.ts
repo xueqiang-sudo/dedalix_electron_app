@@ -11,7 +11,7 @@ import {version} from '../package.json';
 
 // ─── Inject 宋体 font into every frame (preload runs in iframes too) ───
 (function injectFont() {
-    const FONT_CSS = '*, *::before, *::after, body, html, input, textarea, select, button, p, span, div, a, h1, h2, h3, h4, h5, h6, li, td, th, label, em, strong { font-family: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", Arial, sans-serif !important; }';
+    const FONT_CSS = 'body, html, input, textarea, select, button, p, span, div, a, h1, h2, h3, h4, h5, h6, li, td, th, label, em, strong { font-family: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", Arial, sans-serif !important; } [class^="icon-"], [class*="icon-"], [class^="fa-"], [class*=" fa-"] { font-family: "compass-icons" !important; } .fa, .fas, .far, .fab, .fal { font-family: "FontAwesome" !important; }';
 
     function apply() {
         if (!document.getElementById('dedalix-font-override')) {
