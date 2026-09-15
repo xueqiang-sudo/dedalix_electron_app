@@ -6,7 +6,7 @@
  * via contextBridge.
  */
 
-import {contextBridge} from 'electron';
+import {contextBridge, ipcRenderer} from 'electron';
 import {version} from '../package.json';
 
 // ─── Inject 宋体 font into every frame (preload runs in iframes too) ───
@@ -48,4 +48,8 @@ contextBridge.exposeInMainWorld('dedalix', {
 
     // Flag for the webapp to detect it's running inside the desktop client
     isDesktop: true,
+
+    // Download a file and open it with the OS default application (Word/Excel/PPT)
+    downloadAndOpenFile: (url: string, filename: string) =>
+        ipcRenderer.invoke('download-and-open-file', url, filename),
 });

@@ -8,7 +8,9 @@
  *   4. Handle deep links from protocol invocations (macOS open-url, Windows second-instance)
  */
 
-import {app, BrowserWindow, Menu} from 'electron';
+import {app, BrowserWindow, Menu, ipcMain, net, shell} from 'electron';
+import * as path from 'path';
+import * as fs from 'fs';
 
 import {
     registerProtocol,
@@ -17,6 +19,19 @@ import {
 } from './protocol';
 import {createMainWindow, showMainWindow, getMainWindow} from './window';
 import {createTray, destroyTray} from './tray';
+
+// ─── IPC: Download file and open with default app ───────────────────────
+ipcMain.handle('download-and-open-file', async (_event, url: string, filename: string) => {
+    const tempPath = path.join(app.getPath('temp'), filename);
+    const resp = await net.fetch(url);
+    if (!resp.ok) {
+        throw new Error(`Download failed: ${resp.status} ${resp.statusText}`);
+    }
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    fs.writeFileSync(tempPath, buffer);
+    await shell.openPath(tempPath);
+    return tempPath;
+});
 
 // ─── Remove default menu (File, Edit, View, etc.) ──────────────────────
 Menu.setApplicationMenu(null);
