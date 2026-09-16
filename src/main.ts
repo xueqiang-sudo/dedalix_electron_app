@@ -8,7 +8,7 @@
  *   4. Handle deep links from protocol invocations (macOS open-url, Windows second-instance)
  */
 
-import {app, BrowserWindow, Menu, ipcMain, net, shell} from 'electron';
+import {app, BrowserWindow, Menu, ipcMain, net, shell, desktopCapturer, screen, globalShortcut} from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -31,6 +31,39 @@ ipcMain.handle('download-and-open-file', async (_event, url: string, filename: s
     fs.writeFileSync(tempPath, buffer);
     await shell.openPath(tempPath);
     return tempPath;
+});
+
+// ─── IPC: Capture screen for screenshot feature ─────────────────────────
+ipcMain.handle('capture-screen', async () => {
+    try {
+        const primaryDisplay = screen.getPrimaryDisplay();
+        const {width, height} = primaryDisplay.size;
+        const scaleFactor = primaryDisplay.scaleFactor;
+
+        const sources = await desktopCapturer.getSources({
+            types: ['screen'],
+            thumbnailSize: {
+                width: Math.round(width * scaleFactor),
+                height: Math.round(height * scaleFactor),
+            },
+        });
+
+        if (sources.length === 0) {
+            return null;
+        }
+
+        const thumb = sources[0].thumbnail;
+        const jpegBuffer = thumb.toJPEG(85);
+        const dataURL = `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
+        return {
+            dataURL,
+            width: thumb.getSize().width,
+            height: thumb.getSize().height,
+        };
+    } catch (err) {
+        console.error('[screenshot] Failed to capture screen:', err);
+        return null;
+    }
 });
 
 // ─── Remove default menu (File, Edit, View, etc.) ──────────────────────
@@ -89,6 +122,14 @@ if (!gotTheLock) {
         createMainWindow(coldStartDeepLink);
         createTray();
 
+        // ─── Register global screenshot shortcut (Ctrl+Alt+A) ─────────
+        globalShortcut.register('CommandOrControl+Alt+A', () => {
+            const win = getMainWindow();
+            if (win && !win.isDestroyed()) {
+                win.webContents.send('trigger-screenshot');
+            }
+        });
+
         // macOS: re-create window when dock icon is clicked and no windows exist
         app.on('activate', () => {
             if (BrowserWindow.getAllWindows().length === 0) {
@@ -111,5 +152,6 @@ if (!gotTheLock) {
 
     app.on('before-quit', () => {
         destroyTray();
+        globalShortcut.unregisterAll();
     });
 }

@@ -52,4 +52,15 @@ contextBridge.exposeInMainWorld('dedalix', {
     // Download a file and open it with the OS default application (Word/Excel/PPT)
     downloadAndOpenFile: (url: string, filename: string) =>
         ipcRenderer.invoke('download-and-open-file', url, filename),
+
+    // Capture the entire screen as a JPEG dataURL for the screenshot feature
+    captureScreen: (): Promise<{dataURL: string; width: number; height: number} | null> =>
+        ipcRenderer.invoke('capture-screen'),
+
+    // Listen for screenshot trigger from global shortcut
+    onTriggerScreenshot: (callback: () => void) => {
+        const handler = () => callback();
+        ipcRenderer.on('trigger-screenshot', handler);
+        return () => ipcRenderer.removeListener('trigger-screenshot', handler);
+    },
 });
