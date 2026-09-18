@@ -71,9 +71,13 @@ ipcMain.handle('screenshot-start', async () => {
         const imgSize = thumb.getSize();
         console.log(`[screenshot] Captured: ${imgSize.width}x${imgSize.height}`);
 
-        // Step 2: Create fullscreen overlay window
+        // Step 2: Create borderless overlay window (covers entire screen without fullscreen mode change)
+        const bounds = primaryDisplay.bounds;
         overlayWindow = new BrowserWindow({
-            fullscreen: true,
+            x: bounds.x,
+            y: bounds.y,
+            width: bounds.width,
+            height: bounds.height,
             frame: false,
             transparent: false,
             alwaysOnTop: true,
@@ -91,13 +95,10 @@ ipcMain.handle('screenshot-start', async () => {
         const htmlPath = path.join(__dirname, 'screenshot-overlay.html');
         await overlayWindow.loadFile(htmlPath);
 
-        // Step 4: Show overlay, hide main window
+        // Step 4: Show overlay on top of main window (no hide/show = no flicker)
         overlayWindow.show();
         overlayWindow.focus();
         overlayWindow.setAlwaysOnTop(true, 'screen-saver');
-        if (mainWin && !mainWin.isDestroyed()) {
-            mainWin.hide();
-        }
 
         // Step 5: Send screenshot data to overlay
         overlayWindow.webContents.send('screenshot-data', {
@@ -121,8 +122,8 @@ ipcMain.handle('screenshot-start', async () => {
                 overlayWindow = null;
                 ipcMain.removeAllListeners('screenshot-confirm');
                 ipcMain.removeAllListeners('screenshot-cancel');
+                // Main window was never hidden, just bring it to front
                 if (mainWin && !mainWin.isDestroyed()) {
-                    mainWin.show();
                     mainWin.focus();
                 }
             };
@@ -165,9 +166,6 @@ ipcMain.handle('screenshot-start', async () => {
             overlayWindow.destroy();
         }
         overlayWindow = null;
-        if (mainWin && !mainWin.isDestroyed()) {
-            mainWin.show();
-        }
         console.error('[screenshot] Failed:', err);
         return null;
     }

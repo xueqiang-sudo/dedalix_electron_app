@@ -148,8 +148,8 @@ canvas { position: absolute; top: 0; left: 0; }
     <button id="toolText" title="文字">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
     </button>
-    <button id="toolMosaic" title="马赛克">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    <button id="toolEraser" title="橡皮擦">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20H7L3 16c-.8-.8-.8-2 0-2.8L14.2 2a1.4 1.4 0 0 1 2 0l5.6 5.6a1.4 1.4 0 0 1 0 2L11 20"/><line x1="7" y1="20" x2="20" y2="20"/></svg>
     </button>
     <div class="sep"></div>
     <button class="color-btn active" data-color="#ee4c4c" style="background:#ee4c4c"></button>
@@ -188,7 +188,7 @@ canvas { position: absolute; top: 0; left: 0; }
     // Annotation
     let activeTool = 'pen';
     let activeColor = '#ee4c4c';
-    const PEN_W = 3, RECT_W = 2, ARROW_W = 3, ARROW_HEAD = 15, MOSAIC_BLOCK = 10, FONT_SIZE = 18;
+    const PEN_W = 3, RECT_W = 2, ARROW_W = 3, ARROW_HEAD = 15, ERASER_W = 20, FONT_SIZE = 18;
     let isDrawing = false;
     let currentPoints = [];
     let actions = [];
@@ -485,18 +485,19 @@ canvas { position: absolute; top: 0; left: 0; }
                 annotCtx.fillText(a.text, a.points[0].x, a.points[0].y);
             }
             break;
-        case 'mosaic':
-            if (a.points.length < 1) return;
-            var bs = MOSAIC_BLOCK;
-            for (var i = 0; i < a.points.length; i++) {
-                var bx = Math.floor(a.points[i].x / bs) * bs;
-                var by = Math.floor(a.points[i].y / bs) * bs;
-                try {
-                    var px = bgCtx.getImageData(bx + bs/2, by + bs/2, 1, 1).data;
-                    annotCtx.fillStyle = 'rgb(' + px[0] + ',' + px[1] + ',' + px[2] + ')';
-                    annotCtx.fillRect(bx, by, bs, bs);
-                } catch(e) {}
-            }
+        case 'eraser':
+            if (a.points.length < 2) return;
+            annotCtx.save();
+            annotCtx.globalCompositeOperation = 'destination-out';
+            annotCtx.strokeStyle = 'rgba(0,0,0,1)';
+            annotCtx.lineWidth = ERASER_W;
+            annotCtx.lineCap = 'round';
+            annotCtx.lineJoin = 'round';
+            annotCtx.beginPath();
+            annotCtx.moveTo(a.points[0].x, a.points[0].y);
+            for (var i = 1; i < a.points.length; i++) annotCtx.lineTo(a.points[i].x, a.points[i].y);
+            annotCtx.stroke();
+            annotCtx.restore();
             break;
         }
     }
@@ -504,7 +505,7 @@ canvas { position: absolute; top: 0; left: 0; }
     // ─── Toolbar handlers ──────────────────────────────────────────
     var toolBtns = { pen: document.getElementById('toolPen'), rect: document.getElementById('toolRect'),
         arrow: document.getElementById('toolArrow'), text: document.getElementById('toolText'),
-        mosaic: document.getElementById('toolMosaic') };
+        eraser: document.getElementById('toolEraser') };
 
     Object.keys(toolBtns).forEach(function(t) {
         toolBtns[t].addEventListener('click', function(e) {
@@ -576,17 +577,33 @@ canvas { position: absolute; top: 0; left: 0; }
         outCtx.drawImage(bgImage, origX, origY, origW, origH, 0, 0, origW, origH);
 
         // Draw annotations scaled to original resolution
-        outCtx.save();
-        outCtx.scale(1/scale, 1/scale);
-        outCtx.translate(-selection.x, -selection.y);
-        for (var i = 0; i < actions.length; i++) drawActionOn(outCtx, actions[i], bgCtx);
-        outCtx.restore();
+        var hasEraser = actions.some(function(a) { return a.tool === 'eraser'; });
+
+        if (hasEraser) {
+            // Use temp canvas so eraser only erases annotations, not the background image
+            var tmpCanvas = document.createElement('canvas');
+            tmpCanvas.width = outCanvas.width;
+            tmpCanvas.height = outCanvas.height;
+            var tmpCtx = tmpCanvas.getContext('2d');
+            tmpCtx.save();
+            tmpCtx.scale(1/scale, 1/scale);
+            tmpCtx.translate(-selection.x, -selection.y);
+            for (var i = 0; i < actions.length; i++) drawActionOn(tmpCtx, actions[i]);
+            tmpCtx.restore();
+            outCtx.drawImage(tmpCanvas, 0, 0);
+        } else {
+            outCtx.save();
+            outCtx.scale(1/scale, 1/scale);
+            outCtx.translate(-selection.x, -selection.y);
+            for (var i = 0; i < actions.length; i++) drawActionOn(outCtx, actions[i]);
+            outCtx.restore();
+        }
 
         var dataURL = outCanvas.toDataURL('image/png');
         window.overlayAPI.confirm(dataURL, origW, origH);
     }
 
-    function drawActionOn(ctx, a, bgCtx) {
+    function drawActionOn(ctx, a) {
         ctx.strokeStyle = a.color;
         ctx.fillStyle = a.color;
         ctx.lineWidth = a.tool === 'pen' ? PEN_W : RECT_W;
@@ -623,22 +640,19 @@ canvas { position: absolute; top: 0; left: 0; }
                 ctx.fillText(a.text, a.points[0].x, a.points[0].y);
             }
             break;
-        case 'mosaic':
-            if (a.points.length < 1 || !bgCtx) return;
-            var bs = MOSAIC_BLOCK;
-            var drawn = {};
-            for (var i = 0; i < a.points.length; i++) {
-                var bx = Math.floor(a.points[i].x / bs) * bs;
-                var by = Math.floor(a.points[i].y / bs) * bs;
-                var key = bx + ',' + by;
-                if (drawn[key]) continue;
-                drawn[key] = true;
-                try {
-                    var px = bgCtx.getImageData(bx + bs/2, by + bs/2, 1, 1).data;
-                    ctx.fillStyle = 'rgb(' + px[0] + ',' + px[1] + ',' + px[2] + ')';
-                    ctx.fillRect(bx, by, bs, bs);
-                } catch(e) {}
-            }
+        case 'eraser':
+            if (a.points.length < 2) return;
+            ctx.save();
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.strokeStyle = 'rgba(0,0,0,1)';
+            ctx.lineWidth = ERASER_W;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(a.points[0].x, a.points[0].y);
+            for (var i = 1; i < a.points.length; i++) ctx.lineTo(a.points[i].x, a.points[i].y);
+            ctx.stroke();
+            ctx.restore();
             break;
         }
     }
@@ -666,8 +680,11 @@ canvas { position: absolute; top: 0; left: 0; }
             } else {
                 doCancel();
             }
-        } else if (e.key === 'Enter' && phase === 'annotating' && textInput.style.display === 'none') {
-            doConfirm();
+        } else if (e.key === 'Enter' && phase === 'annotating') {
+            // Only confirm screenshot if NOT typing in text input
+            if (e.target !== textInput && textInput.style.display === 'none') {
+                doConfirm();
+            }
         }
     });
 
