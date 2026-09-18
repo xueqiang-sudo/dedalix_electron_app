@@ -34,8 +34,24 @@ ipcMain.handle('download-and-open-file', async (_event, url: string, filename: s
 });
 
 // ─── IPC: Capture screen for screenshot feature ─────────────────────────
+// Plan B: Hide window → capture clean desktop → show window → return image
 ipcMain.handle('capture-screen', async () => {
+    const win = getMainWindow();
+    let wasVisible = false;
+
     try {
+        // Step 1: Hide the main window so it doesn't appear in the screenshot
+        if (win && !win.isDestroyed()) {
+            wasVisible = win.isVisible();
+            if (wasVisible) {
+                win.hide();
+            }
+        }
+
+        // Step 2: Wait for the desktop to repaint (window fully hidden)
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        // Step 3: Capture the clean desktop screenshot
         const primaryDisplay = screen.getPrimaryDisplay();
         const {width, height} = primaryDisplay.size;
         const scaleFactor = primaryDisplay.scaleFactor;
@@ -47,6 +63,11 @@ ipcMain.handle('capture-screen', async () => {
                 height: Math.round(height * scaleFactor),
             },
         });
+
+        // Step 4: Show the window again (before returning, so ScreenshotOverlay can render)
+        if (win && !win.isDestroyed() && wasVisible) {
+            win.show();
+        }
 
         if (sources.length === 0) {
             return null;
@@ -61,6 +82,10 @@ ipcMain.handle('capture-screen', async () => {
             height: thumb.getSize().height,
         };
     } catch (err) {
+        // Ensure window is restored on error
+        if (win && !win.isDestroyed() && wasVisible) {
+            win.show();
+        }
         console.error('[screenshot] Failed to capture screen:', err);
         return null;
     }
