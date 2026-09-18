@@ -33,25 +33,19 @@ ipcMain.handle('download-and-open-file', async (_event, url: string, filename: s
     return tempPath;
 });
 
-// ─── IPC: Capture screen for screenshot feature ─────────────────────────
-// Plan B: Hide window → capture clean desktop → show window → return image
-ipcMain.handle('capture-screen', async () => {
-    const win = getMainWindow();
-    let wasVisible = false;
+// ─── IPC: Screenshot with overlay window (WeChat-style) ─────────────────
+let overlayWindow: BrowserWindow | null = null;
+
+ipcMain.handle('screenshot-start', async () => {
+    // Prevent concurrent screenshots
+    if (overlayWindow) {
+        return null;
+    }
+
+    const mainWin = getMainWindow();
 
     try {
-        // Step 1: Hide the main window so it doesn't appear in the screenshot
-        if (win && !win.isDestroyed()) {
-            wasVisible = win.isVisible();
-            if (wasVisible) {
-                win.hide();
-            }
-        }
-
-        // Step 2: Wait for the desktop to repaint (window fully hidden)
-        await new Promise((resolve) => setTimeout(resolve, 200));
-
-        // Step 3: Capture the clean desktop screenshot
+        // Step 1: Capture full screen (including our window — same as WeChat)
         const primaryDisplay = screen.getPrimaryDisplay();
         const {width, height} = primaryDisplay.size;
         const scaleFactor = primaryDisplay.scaleFactor;
@@ -64,29 +58,104 @@ ipcMain.handle('capture-screen', async () => {
             },
         });
 
-        // Step 4: Show the window again (before returning, so ScreenshotOverlay can render)
-        if (win && !win.isDestroyed() && wasVisible) {
-            win.show();
-        }
-
         if (sources.length === 0) {
             return null;
         }
 
         const thumb = sources[0].thumbnail;
-        const jpegBuffer = thumb.toJPEG(85);
-        const dataURL = `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
-        return {
-            dataURL,
-            width: thumb.getSize().width,
-            height: thumb.getSize().height,
-        };
-    } catch (err) {
-        // Ensure window is restored on error
-        if (win && !win.isDestroyed() && wasVisible) {
-            win.show();
+        const pngBuffer = thumb.toPNG();
+        const dataURL = `data:image/png;base64,${pngBuffer.toString('base64')}`;
+        const imgSize = thumb.getSize();
+
+        // Step 2: Create fullscreen overlay window
+        overlayWindow = new BrowserWindow({
+            fullscreen: true,
+            frame: false,
+            transparent: false,
+            alwaysOnTop: true,
+            skipTaskbar: true,
+            show: false,
+            webPreferences: {
+                preload: path.join(__dirname, 'overlay-preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+                sandbox: false,
+            },
+        });
+
+        // Step 3: Load the overlay HTML
+        await overlayWindow.loadFile(path.join(__dirname, 'screenshot-overlay.html'));
+
+        // Step 4: Show overlay, hide main window
+        overlayWindow.show();
+        overlayWindow.focus();
+        overlayWindow.setAlwaysOnTop(true, 'screen-saver');
+        if (mainWin && !mainWin.isDestroyed()) {
+            mainWin.hide();
         }
-        console.error('[screenshot] Failed to capture screen:', err);
+
+        // Step 5: Send screenshot data to overlay
+        overlayWindow.webContents.send('screenshot-data', {
+            dataURL,
+            width: imgSize.width,
+            height: imgSize.height,
+        });
+
+        // Step 6: Wait for user to confirm or cancel
+        return await new Promise<any>((resolve) => {
+            let resolved = false;
+
+            const cleanup = () => {
+                if (resolved) {
+                    return;
+                }
+                resolved = true;
+                if (overlayWindow && !overlayWindow.isDestroyed()) {
+                    overlayWindow.destroy();
+                }
+                overlayWindow = null;
+                ipcMain.removeAllListeners('screenshot-confirm');
+                ipcMain.removeAllListeners('screenshot-cancel');
+                if (mainWin && !mainWin.isDestroyed()) {
+                    mainWin.show();
+                    mainWin.focus();
+                }
+            };
+
+            ipcMain.once('screenshot-confirm', (_e, result) => {
+                cleanup();
+                resolve(result);
+            });
+
+            ipcMain.once('screenshot-cancel', () => {
+                cleanup();
+                resolve(null);
+            });
+
+            // Handle overlay window closed unexpectedly
+            overlayWindow!.on('closed', () => {
+                cleanup();
+                resolve(null);
+            });
+
+            // Safety timeout: auto-cancel after 60 seconds
+            setTimeout(() => {
+                if (!resolved) {
+                    cleanup();
+                    resolve(null);
+                }
+            }, 60000);
+        });
+    } catch (err) {
+        // Cleanup on error
+        if (overlayWindow && !overlayWindow.isDestroyed()) {
+            overlayWindow.destroy();
+        }
+        overlayWindow = null;
+        if (mainWin && !mainWin.isDestroyed()) {
+            mainWin.show();
+        }
+        console.error('[screenshot] Failed:', err);
         return null;
     }
 });

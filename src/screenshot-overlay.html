@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Screenshot</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+
+#canvasWrap {
+    position: absolute;
+    cursor: crosshair;
+}
+canvas { position: absolute; top: 0; left: 0; }
+#bgCanvas { z-index: 1; }
+#annotCanvas { z-index: 2; }
+
+/* Dim overlays */
+.dim {
+    position: absolute;
+    background: rgba(0,0,0,0.45);
+    z-index: 3;
+    pointer-events: none;
+    display: none;
+}
+
+/* Selection border */
+#selBorder {
+    position: absolute;
+    border: 1.5px solid #1890ff;
+    z-index: 4;
+    pointer-events: none;
+    display: none;
+}
+
+/* Size label */
+#sizeLabel {
+    position: absolute;
+    z-index: 5;
+    background: rgba(24,144,255,0.85);
+    color: #fff;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-family: "Microsoft YaHei", sans-serif;
+    display: none;
+    pointer-events: none;
+}
+
+/* Hint text */
+#hint {
+    position: fixed;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    color: rgba(255,255,255,0.7);
+    font-size: 14px;
+    font-family: "Microsoft YaHei", sans-serif;
+    pointer-events: none;
+}
+
+/* Toolbar */
+#toolbar {
+    position: absolute;
+    z-index: 10;
+    display: none;
+    align-items: center;
+    gap: 2px;
+    background: #2a2a2a;
+    border-radius: 6px;
+    padding: 4px 8px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+}
+#toolbar button {
+    width: 32px; height: 32px;
+    border: none; border-radius: 4px;
+    background: transparent;
+    color: #ccc;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: background 0.15s;
+}
+#toolbar button:hover { background: rgba(255,255,255,0.12); }
+#toolbar button.active { background: rgba(24,144,255,0.3); color: #1890ff; }
+#toolbar button.confirm-btn { color: #52c41a; }
+#toolbar button.cancel-btn { color: #ff4d4f; }
+.sep { width: 1px; height: 24px; background: rgba(255,255,255,0.15); margin: 0 4px; }
+
+/* Color buttons */
+.color-btn {
+    width: 20px !important; height: 20px !important;
+    border-radius: 50% !important;
+    border: 2px solid transparent !important;
+    padding: 0 !important;
+    margin: 0 2px;
+}
+.color-btn.active { border-color: #fff !important; }
+
+/* Text input */
+#textInput {
+    position: absolute;
+    z-index: 6;
+    display: none;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: "Microsoft YaHei", sans-serif;
+    font-size: 18px;
+    min-width: 100px;
+    color: #ee4c4c;
+}
+</style>
+</head>
+<body>
+
+<div id="canvasWrap">
+    <canvas id="bgCanvas"></canvas>
+    <canvas id="annotCanvas"></canvas>
+</div>
+
+<div class="dim" id="dimTop"></div>
+<div class="dim" id="dimBottom"></div>
+<div class="dim" id="dimLeft"></div>
+<div class="dim" id="dimRight"></div>
+<div id="selBorder"></div>
+<div id="sizeLabel"></div>
+<input id="textInput" type="text" />
+
+<div id="hint">拖拽选择截图区域，Esc 取消</div>
+
+<div id="toolbar">
+    <button id="toolPen" class="active" title="画笔">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+    </button>
+    <button id="toolRect" title="矩形">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+    </button>
+    <button id="toolArrow" title="箭头">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    </button>
+    <button id="toolText" title="文字">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+    </button>
+    <button id="toolMosaic" title="马赛克">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    </button>
+    <div class="sep"></div>
+    <button class="color-btn active" data-color="#ee4c4c" style="background:#ee4c4c"></button>
+    <button class="color-btn" data-color="#f5a623" style="background:#f5a623"></button>
+    <button class="color-btn" data-color="#4caf50" style="background:#4caf50"></button>
+    <button class="color-btn" data-color="#2196f3" style="background:#2196f3"></button>
+    <button class="color-btn" data-color="#ffffff" style="background:#ffffff"></button>
+    <button class="color-btn" data-color="#333333" style="background:#333333"></button>
+    <div class="sep"></div>
+    <button id="btnUndo" title="撤销">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+    </button>
+    <button id="btnRedo" title="重做">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    </button>
+    <div class="sep"></div>
+    <button id="btnCancel" class="cancel-btn" title="取消">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <button id="btnConfirm" class="confirm-btn" title="确认">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+    </button>
+</div>
+
+<script>
+(function() {
+    // ─── State ─────────────────────────────────────────────────────
+    let phase = 'waiting'; // waiting → selecting → annotating
+    let imgW = 0, imgH = 0, scale = 1, offX = 0, offY = 0;
+    let bgImage = null;
+
+    // Selection
+    let dragStart = null, dragEnd = null;
+    let selection = null; // {x, y, w, h} in canvas coords
+
+    // Annotation
+    let activeTool = 'pen';
+    let activeColor = '#ee4c4c';
+    const PEN_W = 3, RECT_W = 2, ARROW_W = 3, ARROW_HEAD = 15, MOSAIC_BLOCK = 10, FONT_SIZE = 18;
+    let isDrawing = false;
+    let currentPoints = [];
+    let actions = [];
+    let redoStack = [];
+
+    // DOM refs
+    const wrap = document.getElementById('canvasWrap');
+    const bgCanvas = document.getElementById('bgCanvas');
+    const annotCanvas = document.getElementById('annotCanvas');
+    const bgCtx = bgCanvas.getContext('2d');
+    const annotCtx = annotCanvas.getContext('2d');
+    const dimTop = document.getElementById('dimTop');
+    const dimBottom = document.getElementById('dimBottom');
+    const dimLeft = document.getElementById('dimLeft');
+    const dimRight = document.getElementById('dimRight');
+    const selBorder = document.getElementById('selBorder');
+    const sizeLabel = document.getElementById('sizeLabel');
+    const hint = document.getElementById('hint');
+    const toolbar = document.getElementById('toolbar');
+    const textInput = document.getElementById('textInput');
+
+    // ─── Receive screenshot data ───────────────────────────────────
+    window.overlayAPI.onScreenshotData(function(data) {
+        var img = new Image();
+        img.onload = function() {
+            bgImage = img;
+            imgW = data.width;
+            imgH = data.height;
+
+            // Fit to viewport
+            var vw = window.innerWidth;
+            var vh = window.innerHeight;
+            var sx = vw / imgW;
+            var sy = vh / imgH;
+            scale = Math.min(sx, sy, 1);
+
+            var scaledW = Math.round(imgW * scale);
+            var scaledH = Math.round(imgH * scale);
+            offX = Math.round((vw - scaledW) / 2);
+            offY = Math.round((vh - scaledH) / 2);
+
+            // Position wrap
+            wrap.style.left = offX + 'px';
+            wrap.style.top = offY + 'px';
+            wrap.style.width = scaledW + 'px';
+            wrap.style.height = scaledH + 'px';
+
+            // Setup canvases
+            bgCanvas.width = scaledW;
+            bgCanvas.height = scaledH;
+            annotCanvas.width = scaledW;
+            annotCanvas.height = scaledH;
+
+            bgCtx.drawImage(img, 0, 0, scaledW, scaledH);
+
+            phase = 'selecting';
+        };
+        img.src = data.dataURL;
+    });
+
+    // ─── Coordinate helper ─────────────────────────────────────────
+    function getPoint(e) {
+        var rect = annotCanvas.getBoundingClientRect();
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    // ─── Update dim overlays ────────────────────────────────────────
+    function updateDims(r) {
+        if (!r) {
+            dimTop.style.display = 'none';
+            dimBottom.style.display = 'none';
+            dimLeft.style.display = 'none';
+            dimRight.style.display = 'none';
+            selBorder.style.display = 'none';
+            sizeLabel.style.display = 'none';
+            return;
+        }
+        var cw = annotCanvas.width, ch = annotCanvas.height;
+        dimTop.style.display = 'block';
+        dimTop.style.left = '0'; dimTop.style.top = '0';
+        dimTop.style.width = cw + 'px'; dimTop.style.height = r.y + 'px';
+
+        dimBottom.style.display = 'block';
+        dimBottom.style.left = '0'; dimBottom.style.top = (r.y + r.h) + 'px';
+        dimBottom.style.width = cw + 'px'; dimBottom.style.height = (ch - r.y - r.h) + 'px';
+
+        dimLeft.style.display = 'block';
+        dimLeft.style.left = '0'; dimLeft.style.top = r.y + 'px';
+        dimLeft.style.width = r.x + 'px'; dimLeft.style.height = r.h + 'px';
+
+        dimRight.style.display = 'block';
+        dimRight.style.left = (r.x + r.w) + 'px'; dimRight.style.top = r.y + 'px';
+        dimRight.style.width = (cw - r.x - r.w) + 'px'; dimRight.style.height = r.h + 'px';
+
+        selBorder.style.display = 'block';
+        selBorder.style.left = r.x + 'px'; selBorder.style.top = r.y + 'px';
+        selBorder.style.width = r.w + 'px'; selBorder.style.height = r.h + 'px';
+    }
+
+    function currentRect() {
+        if (selection) return selection;
+        if (dragStart && dragEnd) {
+            return {
+                x: Math.min(dragStart.x, dragEnd.x),
+                y: Math.min(dragStart.y, dragEnd.y),
+                w: Math.abs(dragEnd.x - dragStart.x),
+                h: Math.abs(dragEnd.y - dragStart.y)
+            };
+        }
+        return null;
+    }
+
+    // ─── Selection phase ───────────────────────────────────────────
+    annotCanvas.addEventListener('mousedown', function(e) {
+        if (phase !== 'selecting') return;
+        var pt = getPoint(e);
+        dragStart = pt;
+        dragEnd = pt;
+    });
+
+    annotCanvas.addEventListener('mousemove', function(e) {
+        if (phase === 'selecting' && dragStart) {
+            dragEnd = getPoint(e);
+            var r = currentRect();
+            updateDims(r);
+            // Size label
+            if (r.w > 40 && r.h > 20) {
+                sizeLabel.style.display = 'block';
+                sizeLabel.style.left = (offX + r.x) + 'px';
+                sizeLabel.style.top = (offY + r.y - 24) + 'px';
+                sizeLabel.textContent = Math.round(r.w / scale) + ' × ' + Math.round(r.h / scale);
+            }
+        } else if (phase === 'annotating' && isDrawing) {
+            var pt = getPoint(e);
+            currentPoints.push(pt);
+            redrawAnnot(actions, currentPoints, activeTool, activeColor);
+        }
+    });
+
+    annotCanvas.addEventListener('mouseup', function(e) {
+        if (phase === 'selecting' && dragStart && dragEnd) {
+            var r = currentRect();
+            if (r && r.w >= 10 && r.h >= 10) {
+                selection = r;
+                phase = 'annotating';
+                hint.style.display = 'none';
+                sizeLabel.style.display = 'none';
+                // Show toolbar
+                toolbar.style.display = 'flex';
+                var tbTop = offY + r.y + r.h + 8;
+                if (tbTop + 50 > window.innerHeight) tbTop = offY + r.y - 48;
+                toolbar.style.left = (offX + r.x) + 'px';
+                toolbar.style.top = tbTop + 'px';
+            } else {
+                updateDims(null);
+            }
+            dragStart = null;
+            dragEnd = null;
+        } else if (phase === 'annotating' && isDrawing) {
+            if (currentPoints.length > 1) {
+                actions.push({ tool: activeTool, color: activeColor, points: currentPoints.slice() });
+                redoStack = [];
+                redrawAnnot(actions);
+            }
+            isDrawing = false;
+            currentPoints = [];
+        }
+    });
+
+    annotCanvas.addEventListener('mouseleave', function() {
+        if (phase === 'selecting' && dragStart) {
+            // Treat as mouseup
+            annotCanvas.dispatchEvent(new MouseEvent('mouseup'));
+        }
+    });
+
+    // Annotation mouse down (for tools)
+    annotCanvas.addEventListener('mousedown', function(e) {
+        if (phase !== 'annotating') return;
+        if (activeTool === 'text') {
+            var pt = getPoint(e);
+            showTextInput(pt.x, pt.y);
+            return;
+        }
+        isDrawing = true;
+        currentPoints = [getPoint(e)];
+    }, true);
+
+    // ─── Text input ────────────────────────────────────────────────
+    function showTextInput(x, y) {
+        textInput.style.display = 'block';
+        textInput.style.left = (offX + x) + 'px';
+        textInput.style.top = (offY + y - FONT_SIZE) + 'px';
+        textInput.style.color = activeColor;
+        textInput.value = '';
+        textInput.focus();
+        textInput._pos = { x: x, y: y };
+    }
+
+    function confirmTextInput() {
+        if (textInput.value.trim() && textInput._pos) {
+            actions.push({
+                tool: 'text', color: activeColor,
+                points: [{ x: textInput._pos.x, y: textInput._pos.y }],
+                text: textInput.value, fontSize: FONT_SIZE
+            });
+            redoStack = [];
+            redrawAnnot(actions);
+        }
+        textInput.style.display = 'none';
+        textInput.value = '';
+        textInput._pos = null;
+    }
+
+    textInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); confirmTextInput(); }
+    });
+    textInput.addEventListener('blur', confirmTextInput);
+
+    // ─── Draw annotations ──────────────────────────────────────────
+    function redrawAnnot(actionList, extraPts, extraTool, extraColor) {
+        annotCtx.clearRect(0, 0, annotCanvas.width, annotCanvas.height);
+        for (var i = 0; i < actionList.length; i++) drawAction(actionList[i]);
+        if (extraPts && extraPts.length > 1 && extraTool && extraColor) {
+            drawAction({ tool: extraTool, color: extraColor, points: extraPts });
+        }
+    }
+
+    function drawAction(a) {
+        annotCtx.strokeStyle = a.color;
+        annotCtx.fillStyle = a.color;
+        annotCtx.lineWidth = a.tool === 'pen' ? PEN_W : RECT_W;
+        annotCtx.lineCap = 'round';
+        annotCtx.lineJoin = 'round';
+
+        switch (a.tool) {
+        case 'pen':
+            if (a.points.length < 2) return;
+            annotCtx.beginPath();
+            annotCtx.moveTo(a.points[0].x, a.points[0].y);
+            for (var i = 1; i < a.points.length; i++) annotCtx.lineTo(a.points[i].x, a.points[i].y);
+            annotCtx.stroke();
+            break;
+        case 'rect':
+            if (a.points.length < 2) return;
+            var p0 = a.points[0], p1 = a.points[a.points.length - 1];
+            annotCtx.strokeRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+            break;
+        case 'arrow':
+            if (a.points.length < 2) return;
+            annotCtx.lineWidth = ARROW_W;
+            var p0 = a.points[0], p1 = a.points[a.points.length - 1];
+            var angle = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+            annotCtx.beginPath();
+            annotCtx.moveTo(p0.x, p0.y);
+            annotCtx.lineTo(p1.x, p1.y);
+            annotCtx.stroke();
+            annotCtx.beginPath();
+            annotCtx.moveTo(p1.x, p1.y);
+            annotCtx.lineTo(p1.x - ARROW_HEAD * Math.cos(angle - Math.PI/6), p1.y - ARROW_HEAD * Math.sin(angle - Math.PI/6));
+            annotCtx.lineTo(p1.x - ARROW_HEAD * Math.cos(angle + Math.PI/6), p1.y - ARROW_HEAD * Math.sin(angle + Math.PI/6));
+            annotCtx.closePath();
+            annotCtx.fill();
+            break;
+        case 'text':
+            if (a.text) {
+                annotCtx.font = (a.fontSize || FONT_SIZE) + 'px "Microsoft YaHei", sans-serif';
+                annotCtx.fillText(a.text, a.points[0].x, a.points[0].y);
+            }
+            break;
+        case 'mosaic':
+            if (a.points.length < 1) return;
+            var bs = MOSAIC_BLOCK;
+            for (var i = 0; i < a.points.length; i++) {
+                var bx = Math.floor(a.points[i].x / bs) * bs;
+                var by = Math.floor(a.points[i].y / bs) * bs;
+                try {
+                    var px = bgCtx.getImageData(bx + bs/2, by + bs/2, 1, 1).data;
+                    annotCtx.fillStyle = 'rgb(' + px[0] + ',' + px[1] + ',' + px[2] + ')';
+                    annotCtx.fillRect(bx, by, bs, bs);
+                } catch(e) {}
+            }
+            break;
+        }
+    }
+
+    // ─── Toolbar handlers ──────────────────────────────────────────
+    var toolBtns = { pen: document.getElementById('toolPen'), rect: document.getElementById('toolRect'),
+        arrow: document.getElementById('toolArrow'), text: document.getElementById('toolText'),
+        mosaic: document.getElementById('toolMosaic') };
+
+    Object.keys(toolBtns).forEach(function(t) {
+        toolBtns[t].addEventListener('click', function(e) {
+            e.stopPropagation();
+            activeTool = t;
+            Object.keys(toolBtns).forEach(function(k) { toolBtns[k].classList.toggle('active', k === t); });
+        });
+    });
+
+    document.querySelectorAll('.color-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            activeColor = btn.dataset.color;
+            document.querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+        });
+    });
+
+    document.getElementById('btnUndo').addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (actions.length === 0) return;
+        redoStack.push(actions.pop());
+        redrawAnnot(actions);
+    });
+
+    document.getElementById('btnRedo').addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (redoStack.length === 0) return;
+        actions.push(redoStack.pop());
+        redrawAnnot(actions);
+    });
+
+    document.getElementById('btnCancel').addEventListener('click', function(e) {
+        e.stopPropagation();
+        doCancel();
+    });
+
+    document.getElementById('btnConfirm').addEventListener('click', function(e) {
+        e.stopPropagation();
+        doConfirm();
+    });
+
+    // Prevent toolbar clicks from reaching canvas
+    toolbar.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+
+    // ─── Confirm / Cancel ──────────────────────────────────────────
+    function doConfirm() {
+        if (!selection) return;
+        confirmTextInput();
+
+        var outCanvas = document.createElement('canvas');
+        // Output at original resolution
+        var origX = Math.round(selection.x / scale);
+        var origY = Math.round(selection.y / scale);
+        var origW = Math.round(selection.w / scale);
+        var origH = Math.round(selection.h / scale);
+        outCanvas.width = origW;
+        outCanvas.height = origH;
+        var outCtx = outCanvas.getContext('2d');
+
+        // Draw background (selected region from original image)
+        outCtx.drawImage(bgImage, origX, origY, origW, origH, 0, 0, origW, origH);
+
+        // Draw annotations scaled to original resolution
+        outCtx.save();
+        outCtx.scale(1/scale, 1/scale);
+        outCtx.translate(-selection.x, -selection.y);
+        for (var i = 0; i < actions.length; i++) drawActionOn(outCtx, actions[i]);
+        outCtx.restore();
+
+        var dataURL = outCanvas.toDataURL('image/png');
+        window.overlayAPI.confirm(dataURL, origW, origH);
+    }
+
+    function drawActionOn(ctx, a) {
+        ctx.strokeStyle = a.color;
+        ctx.fillStyle = a.color;
+        ctx.lineWidth = a.tool === 'pen' ? PEN_W : RECT_W;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        switch (a.tool) {
+        case 'pen':
+            if (a.points.length < 2) return;
+            ctx.beginPath();
+            ctx.moveTo(a.points[0].x, a.points[0].y);
+            for (var i = 1; i < a.points.length; i++) ctx.lineTo(a.points[i].x, a.points[i].y);
+            ctx.stroke();
+            break;
+        case 'rect':
+            if (a.points.length < 2) return;
+            var p0 = a.points[0], p1 = a.points[a.points.length - 1];
+            ctx.strokeRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+            break;
+        case 'arrow':
+            if (a.points.length < 2) return;
+            ctx.lineWidth = ARROW_W;
+            var p0 = a.points[0], p1 = a.points[a.points.length - 1];
+            var angle = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+            ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p1.x - ARROW_HEAD * Math.cos(angle - Math.PI/6), p1.y - ARROW_HEAD * Math.sin(angle - Math.PI/6));
+            ctx.lineTo(p1.x - ARROW_HEAD * Math.cos(angle + Math.PI/6), p1.y - ARROW_HEAD * Math.sin(angle + Math.PI/6));
+            ctx.closePath(); ctx.fill();
+            break;
+        case 'text':
+            if (a.text) {
+                ctx.font = (a.fontSize || FONT_SIZE) + 'px "Microsoft YaHei", sans-serif';
+                ctx.fillText(a.text, a.points[0].x, a.points[0].y);
+            }
+            break;
+        case 'mosaic':
+            // For mosaic, read from output canvas at original res — skip for simplicity
+            break;
+        }
+    }
+
+    function doCancel() {
+        window.overlayAPI.cancel();
+    }
+
+    // ─── Keyboard ──────────────────────────────────────────────────
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            if (textInput.style.display !== 'none') {
+                confirmTextInput();
+            } else if (phase === 'annotating') {
+                // Back to selecting
+                phase = 'selecting';
+                selection = null;
+                actions = [];
+                redoStack = [];
+                annotCtx.clearRect(0, 0, annotCanvas.width, annotCanvas.height);
+                toolbar.style.display = 'none';
+                updateDims(null);
+                hint.style.display = 'block';
+            } else {
+                doCancel();
+            }
+        } else if (e.key === 'Enter' && phase === 'annotating' && textInput.style.display === 'none') {
+            doConfirm();
+        }
+    });
+
+})();
+</script>
+</body>
+</html>

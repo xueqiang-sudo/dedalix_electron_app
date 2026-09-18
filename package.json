@@ -6,7 +6,7 @@
   "author": "Optibot",
   "license": "MIT",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp src/screenshot-overlay.html dist/",
     "watch": "tsc -w",
     "start": "npm run build && electron .",
     "pack": "npm run build && electron-builder --dir",

@@ -55,7 +55,7 @@ contextBridge.exposeInMainWorld('dedalix', {
 
     // Capture the entire screen as a JPEG dataURL for the screenshot feature
     captureScreen: (): Promise<{dataURL: string; width: number; height: number} | null> =>
-        ipcRenderer.invoke('capture-screen'),
+        ipcRenderer.invoke('screenshot-start'),
 
     // Listen for screenshot trigger from global shortcut
     onTriggerScreenshot: (callback: () => void) => {
