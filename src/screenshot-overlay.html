@@ -102,18 +102,19 @@ canvas { position: absolute; top: 0; left: 0; }
 
 /* Text input */
 #textInput {
-    position: absolute;
-    z-index: 6;
+    position: fixed;
+    z-index: 100;
     display: none;
-    background: rgba(0, 0, 0, 0.6);
-    border: 2px solid;
-    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.75);
+    border: 2px solid #ee4c4c;
+    border-radius: 4px;
     outline: none;
     font-family: "Microsoft YaHei", sans-serif;
     font-size: 18px;
-    min-width: 150px;
-    padding: 4px 8px;
+    min-width: 200px;
+    padding: 6px 10px;
     color: #ee4c4c;
+    caret-color: #fff;
 }
 </style>
 </head>
@@ -371,6 +372,8 @@ canvas { position: absolute; top: 0; left: 0; }
     annotCanvas.addEventListener('mousedown', function(e) {
         if (phase !== 'annotating') return;
         if (activeTool === 'text') {
+            e.preventDefault(); // Prevent canvas from stealing focus
+            e.stopPropagation();
             var pt = getPoint(e);
             showTextInput(pt.x, pt.y);
             return;
@@ -381,14 +384,23 @@ canvas { position: absolute; top: 0; left: 0; }
 
     // ─── Text input ────────────────────────────────────────────────
     function showTextInput(x, y) {
+        // Position in viewport coordinates (textInput uses position: fixed)
+        var left = offX + x;
+        var top = offY + y - FONT_SIZE - 8;
+        // Keep within viewport
+        if (left + 220 > window.innerWidth) left = window.innerWidth - 230;
+        if (top < 10) top = 10;
+        if (top + 40 > window.innerHeight) top = window.innerHeight - 50;
+
         textInput.style.display = 'block';
-        textInput.style.left = (offX + x) + 'px';
-        textInput.style.top = (offY + y - FONT_SIZE - 6) + 'px';
+        textInput.style.left = left + 'px';
+        textInput.style.top = top + 'px';
         textInput.style.color = activeColor;
         textInput.style.borderColor = activeColor;
         textInput.value = '';
-        textInput.focus();
         textInput._pos = { x: x, y: y };
+        // Delay focus to next event cycle — avoids mousedown stealing focus back
+        setTimeout(function() { textInput.focus(); }, 50);
     }
 
     function confirmTextInput() {
@@ -488,6 +500,12 @@ canvas { position: absolute; top: 0; left: 0; }
             e.stopPropagation();
             activeTool = t;
             Object.keys(toolBtns).forEach(function(k) { toolBtns[k].classList.toggle('active', k === t); });
+            // Change cursor based on tool
+            annotCanvas.style.cursor = (t === 'text') ? 'text' : 'crosshair';
+            // Hide text input if switching away from text tool
+            if (t !== 'text' && textInput.style.display !== 'none') {
+                confirmTextInput();
+            }
         });
     });
 
