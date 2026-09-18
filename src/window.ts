@@ -237,11 +237,17 @@ export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
         mainWindow = null;
     });
 
-    // ─── Ctrl+Shift+R: force reload (only when window is focused) ───
+    // ─── Dev & debug shortcuts ──────────────────────────────────────────
     mainWindow.webContents.on('before-input-event', (event, input) => {
+        // Ctrl+Shift+R: force reload
         if (input.control && input.shift && input.key.toLowerCase() === 'r') {
             event.preventDefault();
             mainWindow?.webContents.reloadIgnoringCache();
+        }
+        // F12 or Ctrl+Shift+I: toggle DevTools
+        if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
+            event.preventDefault();
+            mainWindow?.webContents.toggleDevTools();
         }
     });
 

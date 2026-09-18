@@ -39,9 +39,11 @@ let overlayWindow: BrowserWindow | null = null;
 ipcMain.handle('screenshot-start', async () => {
     // Prevent concurrent screenshots
     if (overlayWindow) {
+        console.log('[screenshot] Already in progress, ignoring');
         return null;
     }
 
+    console.log('[screenshot] Starting...');
     const mainWin = getMainWindow();
 
     try {
@@ -123,11 +125,13 @@ ipcMain.handle('screenshot-start', async () => {
             };
 
             ipcMain.once('screenshot-confirm', (_e, result) => {
+                console.log('[screenshot] Confirmed:', result ? `${result.width}x${result.height}, dataURL length=${result.dataURL?.length}` : 'null');
                 cleanup();
                 resolve(result);
             });
 
             ipcMain.once('screenshot-cancel', () => {
+                console.log('[screenshot] Cancelled');
                 cleanup();
                 resolve(null);
             });
