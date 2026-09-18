@@ -39,16 +39,17 @@ let overlayWindow: BrowserWindow | null = null;
 ipcMain.handle('screenshot-start', async () => {
     // Prevent concurrent screenshots
     if (overlayWindow) {
-        console.log('[screenshot] Already in progress, ignoring');
+        dialog.showErrorBox('截图调试', '已有截图正在进行中');
         return null;
     }
 
-    console.log('[screenshot] Starting...');
     const mainWin = getMainWindow();
+    const steps: string[] = [];
+    steps.push('Handler called');
 
     try {
         // Step 1: Capture full screen (including our window — same as WeChat)
-        console.log('[screenshot] Step 1: Capturing screen...');
+        steps.push('Step1: Capturing screen...');
         const primaryDisplay = screen.getPrimaryDisplay();
         const {width, height} = primaryDisplay.size;
         const scaleFactor = primaryDisplay.scaleFactor;
@@ -62,8 +63,7 @@ ipcMain.handle('screenshot-start', async () => {
         });
 
         if (sources.length === 0) {
-            console.log('[screenshot] No screen sources found');
-            dialog.showErrorBox('截图失败', '无法获取屏幕信息');
+            dialog.showErrorBox('截图调试', 'Step 1 失败: 无法获取屏幕信息');
             return null;
         }
 
@@ -71,10 +71,10 @@ ipcMain.handle('screenshot-start', async () => {
         const pngBuffer = thumb.toPNG();
         const dataURL = `data:image/png;base64,${pngBuffer.toString('base64')}`;
         const imgSize = thumb.getSize();
-        console.log(`[screenshot] Step 1 OK: ${imgSize.width}x${imgSize.height}, dataURL length=${dataURL.length}`);
+        steps.push(`Step1 OK: ${imgSize.width}x${imgSize.height}`);
 
         // Step 2: Create fullscreen overlay window
-        console.log('[screenshot] Step 2: Creating overlay window...');
+        steps.push('Step2: Creating overlay window');
         overlayWindow = new BrowserWindow({
             fullscreen: true,
             frame: false,
@@ -92,28 +92,34 @@ ipcMain.handle('screenshot-start', async () => {
 
         // Step 3: Load the overlay HTML
         const htmlPath = path.join(__dirname, 'screenshot-overlay.html');
-        console.log(`[screenshot] Step 3: Loading ${htmlPath}`);
+        const preloadPath = path.join(__dirname, 'overlay-preload.js');
+        steps.push(`Step3: htmlPath=${htmlPath}, exists=${fs.existsSync(htmlPath)}`);
+        steps.push(`Step3: preloadPath=${preloadPath}, exists=${fs.existsSync(preloadPath)}`);
+        if (!fs.existsSync(htmlPath)) {
+            dialog.showErrorBox('截图调试', `HTML 文件不存在!\n${htmlPath}\n\n__dirname=${__dirname}\n\n${steps.join('\n')}`);
+            return null;
+        }
         await overlayWindow.loadFile(htmlPath);
-        console.log('[screenshot] Step 3 OK: HTML loaded');
+        steps.push('Step3 OK: HTML loaded');
 
         // Step 4: Show overlay, hide main window
-        console.log('[screenshot] Step 4: Showing overlay, hiding main...');
+        steps.push('Step4: Showing overlay, hiding main');
         overlayWindow.show();
         overlayWindow.focus();
         overlayWindow.setAlwaysOnTop(true, 'screen-saver');
         if (mainWin && !mainWin.isDestroyed()) {
             mainWin.hide();
         }
-        console.log('[screenshot] Step 4 OK: Overlay visible');
+        steps.push('Step4 OK: Overlay visible');
 
         // Step 5: Send screenshot data to overlay
-        console.log('[screenshot] Step 5: Sending data to overlay...');
+        steps.push('Step5: Sending data to overlay');
         overlayWindow.webContents.send('screenshot-data', {
             dataURL,
             width: imgSize.width,
             height: imgSize.height,
         });
-        console.log('[screenshot] Step 5 OK: Data sent');
+        steps.push('Step5 OK: Data sent');
 
         // Step 6: Wait for user to confirm or cancel
         return await new Promise<any>((resolve) => {
@@ -137,20 +143,23 @@ ipcMain.handle('screenshot-start', async () => {
             };
 
             ipcMain.once('screenshot-confirm', (_e, result) => {
-                console.log('[screenshot] Confirmed:', result ? `${result.width}x${result.height}, dataURL length=${result.dataURL?.length}` : 'null');
+                steps.push(`Step6: Confirmed ${result?.width}x${result?.height}`);
+                dialog.showErrorBox('截图调试', `确认!\n\n${steps.join('\n')}`);
                 cleanup();
                 resolve(result);
             });
 
             ipcMain.once('screenshot-cancel', () => {
-                console.log('[screenshot] Cancelled');
+                steps.push('Step6: Cancelled');
+                dialog.showErrorBox('截图调试', `取消!\n\n${steps.join('\n')}`);
                 cleanup();
                 resolve(null);
             });
 
             // Handle overlay window closed unexpectedly
             overlayWindow!.on('closed', () => {
-                console.log('[screenshot] Overlay window closed');
+                steps.push('Step6: Overlay closed unexpectedly');
+                dialog.showErrorBox('截图调试', `覆盖窗口意外关闭!\n\n${steps.join('\n')}`);
                 cleanup();
                 resolve(null);
             });
@@ -173,7 +182,7 @@ ipcMain.handle('screenshot-start', async () => {
             mainWin.show();
         }
         console.error('[screenshot] Failed:', err);
-        dialog.showErrorBox('截图失败', `错误: ${err}`);
+        dialog.showErrorBox('截图调试', `异常!\n\n步骤:\n${steps.join('\n')}\n\n错误: ${err}`);
         return null;
     }
 });
