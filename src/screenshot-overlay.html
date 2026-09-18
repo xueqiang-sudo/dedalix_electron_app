@@ -188,7 +188,7 @@ canvas { position: absolute; top: 0; left: 0; }
     // Annotation
     let activeTool = 'pen';
     let activeColor = '#ee4c4c';
-    const PEN_W = 3, RECT_W = 2, ARROW_W = 3, ARROW_HEAD = 15, ERASER_W = 20, FONT_SIZE = 18;
+    const PEN_W = 3, RECT_W = 2, ARROW_W = 3, ARROW_HEAD = 15, ERASER_W = 30, FONT_SIZE = 18;
     let isDrawing = false;
     let currentPoints = [];
     let actions = [];
@@ -488,8 +488,8 @@ canvas { position: absolute; top: 0; left: 0; }
         case 'eraser':
             if (a.points.length < 2) return;
             annotCtx.save();
-            annotCtx.globalCompositeOperation = 'destination-out';
-            annotCtx.strokeStyle = 'rgba(0,0,0,1)';
+            annotCtx.strokeStyle = '#ffffff';
+            annotCtx.fillStyle = '#ffffff';
             annotCtx.lineWidth = ERASER_W;
             annotCtx.lineCap = 'round';
             annotCtx.lineJoin = 'round';
@@ -513,7 +513,9 @@ canvas { position: absolute; top: 0; left: 0; }
             activeTool = t;
             Object.keys(toolBtns).forEach(function(k) { toolBtns[k].classList.toggle('active', k === t); });
             // Change cursor based on tool
-            annotCanvas.style.cursor = (t === 'text') ? 'text' : 'crosshair';
+            if (t === 'text') annotCanvas.style.cursor = 'text';
+            else if (t === 'eraser') annotCanvas.style.cursor = 'cell';
+            else annotCanvas.style.cursor = 'crosshair';
             // Hide text input if switching away from text tool
             if (t !== 'text' && textInput.style.display !== 'none') {
                 confirmTextInput();
@@ -577,27 +579,11 @@ canvas { position: absolute; top: 0; left: 0; }
         outCtx.drawImage(bgImage, origX, origY, origW, origH, 0, 0, origW, origH);
 
         // Draw annotations scaled to original resolution
-        var hasEraser = actions.some(function(a) { return a.tool === 'eraser'; });
-
-        if (hasEraser) {
-            // Use temp canvas so eraser only erases annotations, not the background image
-            var tmpCanvas = document.createElement('canvas');
-            tmpCanvas.width = outCanvas.width;
-            tmpCanvas.height = outCanvas.height;
-            var tmpCtx = tmpCanvas.getContext('2d');
-            tmpCtx.save();
-            tmpCtx.scale(1/scale, 1/scale);
-            tmpCtx.translate(-selection.x, -selection.y);
-            for (var i = 0; i < actions.length; i++) drawActionOn(tmpCtx, actions[i]);
-            tmpCtx.restore();
-            outCtx.drawImage(tmpCanvas, 0, 0);
-        } else {
-            outCtx.save();
-            outCtx.scale(1/scale, 1/scale);
-            outCtx.translate(-selection.x, -selection.y);
-            for (var i = 0; i < actions.length; i++) drawActionOn(outCtx, actions[i]);
-            outCtx.restore();
-        }
+        outCtx.save();
+        outCtx.scale(1/scale, 1/scale);
+        outCtx.translate(-selection.x, -selection.y);
+        for (var i = 0; i < actions.length; i++) drawActionOn(outCtx, actions[i]);
+        outCtx.restore();
 
         var dataURL = outCanvas.toDataURL('image/png');
         window.overlayAPI.confirm(dataURL, origW, origH);
@@ -643,8 +629,8 @@ canvas { position: absolute; top: 0; left: 0; }
         case 'eraser':
             if (a.points.length < 2) return;
             ctx.save();
-            ctx.globalCompositeOperation = 'destination-out';
-            ctx.strokeStyle = 'rgba(0,0,0,1)';
+            ctx.strokeStyle = '#ffffff';
+            ctx.fillStyle = '#ffffff';
             ctx.lineWidth = ERASER_W;
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';

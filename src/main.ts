@@ -71,13 +71,9 @@ ipcMain.handle('screenshot-start', async () => {
         const imgSize = thumb.getSize();
         console.log(`[screenshot] Captured: ${imgSize.width}x${imgSize.height}`);
 
-        // Step 2: Create borderless overlay window (covers entire screen without fullscreen mode change)
-        const bounds = primaryDisplay.bounds;
+        // Step 2: Create fullscreen overlay window (covers entire screen, no DPI issues)
         overlayWindow = new BrowserWindow({
-            x: bounds.x,
-            y: bounds.y,
-            width: bounds.width,
-            height: bounds.height,
+            fullscreen: true,
             frame: false,
             transparent: false,
             alwaysOnTop: true,
