@@ -105,12 +105,14 @@ canvas { position: absolute; top: 0; left: 0; }
     position: absolute;
     z-index: 6;
     display: none;
-    background: transparent;
-    border: none;
+    background: rgba(0, 0, 0, 0.6);
+    border: 2px solid;
+    border-radius: 3px;
     outline: none;
     font-family: "Microsoft YaHei", sans-serif;
     font-size: 18px;
-    min-width: 100px;
+    min-width: 150px;
+    padding: 4px 8px;
     color: #ee4c4c;
 }
 </style>
@@ -381,8 +383,9 @@ canvas { position: absolute; top: 0; left: 0; }
     function showTextInput(x, y) {
         textInput.style.display = 'block';
         textInput.style.left = (offX + x) + 'px';
-        textInput.style.top = (offY + y - FONT_SIZE) + 'px';
+        textInput.style.top = (offY + y - FONT_SIZE - 6) + 'px';
         textInput.style.color = activeColor;
+        textInput.style.borderColor = activeColor;
         textInput.value = '';
         textInput.focus();
         textInput._pos = { x: x, y: y };
@@ -547,14 +550,14 @@ canvas { position: absolute; top: 0; left: 0; }
         outCtx.save();
         outCtx.scale(1/scale, 1/scale);
         outCtx.translate(-selection.x, -selection.y);
-        for (var i = 0; i < actions.length; i++) drawActionOn(outCtx, actions[i]);
+        for (var i = 0; i < actions.length; i++) drawActionOn(outCtx, actions[i], bgCtx);
         outCtx.restore();
 
         var dataURL = outCanvas.toDataURL('image/png');
         window.overlayAPI.confirm(dataURL, origW, origH);
     }
 
-    function drawActionOn(ctx, a) {
+    function drawActionOn(ctx, a, bgCtx) {
         ctx.strokeStyle = a.color;
         ctx.fillStyle = a.color;
         ctx.lineWidth = a.tool === 'pen' ? PEN_W : RECT_W;
@@ -592,7 +595,21 @@ canvas { position: absolute; top: 0; left: 0; }
             }
             break;
         case 'mosaic':
-            // For mosaic, read from output canvas at original res — skip for simplicity
+            if (a.points.length < 1 || !bgCtx) return;
+            var bs = MOSAIC_BLOCK;
+            var drawn = {};
+            for (var i = 0; i < a.points.length; i++) {
+                var bx = Math.floor(a.points[i].x / bs) * bs;
+                var by = Math.floor(a.points[i].y / bs) * bs;
+                var key = bx + ',' + by;
+                if (drawn[key]) continue;
+                drawn[key] = true;
+                try {
+                    var px = bgCtx.getImageData(bx + bs/2, by + bs/2, 1, 1).data;
+                    ctx.fillStyle = 'rgb(' + px[0] + ',' + px[1] + ',' + px[2] + ')';
+                    ctx.fillRect(bx, by, bs, bs);
+                } catch(e) {}
+            }
             break;
         }
     }
