@@ -28,10 +28,10 @@ interface WindowState {
     isMaximized: boolean;
 }
 
-const DEFAULT_WIDTH = 1280;
-const DEFAULT_HEIGHT = 800;
-const MIN_WIDTH = 800;
-const MIN_HEIGHT = 600;
+const DEFAULT_WIDTH = 900;
+const DEFAULT_HEIGHT = 650;
+const MIN_WIDTH = 600;
+const MIN_HEIGHT = 450;
 
 let mainWindow: BrowserWindow | null = null;
 let windowState: WindowState;
@@ -46,11 +46,21 @@ function loadWindowState(): WindowState {
         if (fs.existsSync(stateFile)) {
             const data = fs.readFileSync(stateFile, 'utf-8');
             const parsed = JSON.parse(data) as Partial<WindowState>;
+            const w = parsed.width || DEFAULT_WIDTH;
+            const h = parsed.height || DEFAULT_HEIGHT;
+            // One-time migration: reset old default size (1280×800) to new compact size
+            if (w === 1280 && h === 800) {
+                return {
+                    width: DEFAULT_WIDTH,
+                    height: DEFAULT_HEIGHT,
+                    isMaximized: parsed.isMaximized || false,
+                };
+            }
             return {
                 x: parsed.x,
                 y: parsed.y,
-                width: parsed.width || DEFAULT_WIDTH,
-                height: parsed.height || DEFAULT_HEIGHT,
+                width: w,
+                height: h,
                 isMaximized: parsed.isMaximized || false,
             };
         }

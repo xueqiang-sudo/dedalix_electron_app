@@ -419,7 +419,18 @@ canvas { position: absolute; top: 0; left: 0; }
     }
 
     textInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') { e.preventDefault(); confirmTextInput(); }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation(); // Prevent bubbling to document handler which would trigger doConfirm
+            confirmTextInput();
+        }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            textInput.style.display = 'none';
+            textInput.value = '';
+            textInput._pos = null;
+        }
     });
     textInput.addEventListener('blur', confirmTextInput);
 
