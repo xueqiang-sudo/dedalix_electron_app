@@ -8,7 +8,7 @@
  *   4. Handle deep links from protocol invocations (macOS open-url, Windows second-instance)
  */
 
-import {app, BrowserWindow, Menu, ipcMain, net, shell, desktopCapturer, screen, globalShortcut} from 'electron';
+import {app, BrowserWindow, Menu, ipcMain, net, shell, desktopCapturer, screen, globalShortcut, dialog} from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -48,6 +48,7 @@ ipcMain.handle('screenshot-start', async () => {
 
     try {
         // Step 1: Capture full screen (including our window — same as WeChat)
+        console.log('[screenshot] Step 1: Capturing screen...');
         const primaryDisplay = screen.getPrimaryDisplay();
         const {width, height} = primaryDisplay.size;
         const scaleFactor = primaryDisplay.scaleFactor;
@@ -61,6 +62,8 @@ ipcMain.handle('screenshot-start', async () => {
         });
 
         if (sources.length === 0) {
+            console.log('[screenshot] No screen sources found');
+            dialog.showErrorBox('截图失败', '无法获取屏幕信息');
             return null;
         }
 
@@ -68,8 +71,10 @@ ipcMain.handle('screenshot-start', async () => {
         const pngBuffer = thumb.toPNG();
         const dataURL = `data:image/png;base64,${pngBuffer.toString('base64')}`;
         const imgSize = thumb.getSize();
+        console.log(`[screenshot] Step 1 OK: ${imgSize.width}x${imgSize.height}, dataURL length=${dataURL.length}`);
 
         // Step 2: Create fullscreen overlay window
+        console.log('[screenshot] Step 2: Creating overlay window...');
         overlayWindow = new BrowserWindow({
             fullscreen: true,
             frame: false,
@@ -86,22 +91,29 @@ ipcMain.handle('screenshot-start', async () => {
         });
 
         // Step 3: Load the overlay HTML
-        await overlayWindow.loadFile(path.join(__dirname, 'screenshot-overlay.html'));
+        const htmlPath = path.join(__dirname, 'screenshot-overlay.html');
+        console.log(`[screenshot] Step 3: Loading ${htmlPath}`);
+        await overlayWindow.loadFile(htmlPath);
+        console.log('[screenshot] Step 3 OK: HTML loaded');
 
         // Step 4: Show overlay, hide main window
+        console.log('[screenshot] Step 4: Showing overlay, hiding main...');
         overlayWindow.show();
         overlayWindow.focus();
         overlayWindow.setAlwaysOnTop(true, 'screen-saver');
         if (mainWin && !mainWin.isDestroyed()) {
             mainWin.hide();
         }
+        console.log('[screenshot] Step 4 OK: Overlay visible');
 
         // Step 5: Send screenshot data to overlay
+        console.log('[screenshot] Step 5: Sending data to overlay...');
         overlayWindow.webContents.send('screenshot-data', {
             dataURL,
             width: imgSize.width,
             height: imgSize.height,
         });
+        console.log('[screenshot] Step 5 OK: Data sent');
 
         // Step 6: Wait for user to confirm or cancel
         return await new Promise<any>((resolve) => {
@@ -138,6 +150,7 @@ ipcMain.handle('screenshot-start', async () => {
 
             // Handle overlay window closed unexpectedly
             overlayWindow!.on('closed', () => {
+                console.log('[screenshot] Overlay window closed');
                 cleanup();
                 resolve(null);
             });
@@ -160,6 +173,7 @@ ipcMain.handle('screenshot-start', async () => {
             mainWin.show();
         }
         console.error('[screenshot] Failed:', err);
+        dialog.showErrorBox('截图失败', `错误: ${err}`);
         return null;
     }
 });

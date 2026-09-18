@@ -208,9 +208,12 @@ canvas { position: absolute; top: 0; left: 0; }
     const textInput = document.getElementById('textInput');
 
     // ─── Receive screenshot data ───────────────────────────────────
+    console.log('[overlay] Waiting for screenshot data...');
     window.overlayAPI.onScreenshotData(function(data) {
+        console.log('[overlay] Received data:', data.width + 'x' + data.height, 'dataURL length=' + data.dataURL.length);
         var img = new Image();
         img.onload = function() {
+            console.log('[overlay] Image loaded, phase=selecting');
             bgImage = img;
             imgW = data.width;
             imgH = data.height;
@@ -523,6 +526,7 @@ canvas { position: absolute; top: 0; left: 0; }
 
     // ─── Confirm / Cancel ──────────────────────────────────────────
     function doConfirm() {
+        console.log('[overlay] Confirm clicked, selection:', selection);
         if (!selection) return;
         confirmTextInput();
 
@@ -594,6 +598,7 @@ canvas { position: absolute; top: 0; left: 0; }
     }
 
     function doCancel() {
+        console.log('[overlay] Cancel clicked');
         window.overlayAPI.cancel();
     }
 
