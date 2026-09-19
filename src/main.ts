@@ -8,10 +8,9 @@
  *   4. Handle deep links from protocol invocations (macOS open-url, Windows second-instance)
  */
 
-import {app, BrowserWindow, Menu, ipcMain, net, shell, globalShortcut} from 'electron';
+import {app, BrowserWindow, Menu, ipcMain, net, shell, desktopCapturer, screen, globalShortcut} from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import {execFile} from 'child_process';
 
 import {
     registerProtocol,
@@ -34,82 +33,6 @@ ipcMain.handle('download-and-open-file', async (_event, url: string, filename: s
     return tempPath;
 });
 
-// ─── Native screenshot capture (reads directly from frame buffer, no flicker) ──
-function captureNativeScreenshot(): Promise<{buffer: Buffer; width: number; height: number} | null> {
-    return new Promise((resolve) => {
-        const tmpFile = path.join(app.getPath('temp'), `dedalix_ss_${Date.now()}.png`);
-
-        // Try screenshot tools in order of preference (Linux)
-        // scrot: fastest, reads directly from X frame buffer
-        // gnome-screenshot: GNOME/Wayland compatible
-        // maim: modern alternative to scrot
-        const tryTools = [
-            {cmd: 'scrot', args: [tmpFile]},
-            {cmd: 'gnome-screenshot', args: ['-f', tmpFile]},
-            {cmd: 'maim', args: [tmpFile]},
-        ];
-
-        // Detect platform and adjust
-        if (process.platform === 'darwin') {
-            tryTools.length = 0;
-            tryTools.push({cmd: 'screencapture', args: ['-x', tmpFile]}); // -x = no sound
-        } else if (process.platform === 'win32') {
-            // Windows: use PowerShell to capture via .NET
-            tryTools.length = 0;
-            const psScript = `
-                Add-Type -AssemblyName System.Windows.Forms;
-                [System.Windows.Forms.Screen]::PrimaryScreen | ForEach-Object {
-                    $bitmap = New-Object System.Drawing.Bitmap($_.Bounds.Width, $_.Bounds.Height);
-                    $graphics = [System.Drawing.Graphics]::FromImage($bitmap);
-                    $graphics.CopyFromScreen($_.Bounds.Location, [System.Drawing.Point]::Empty, $_.Bounds.Size);
-                    $bitmap.Save('${tmpFile.replace(/\\/g, '\\\\')}');
-                }
-            `;
-            tryTools.push({cmd: 'powershell', args: ['-command', psScript]});
-        }
-
-        let toolIndex = 0;
-
-        function tryNext() {
-            if (toolIndex >= tryTools.length) {
-                console.error('[screenshot] All screenshot tools failed');
-                resolve(null);
-                return;
-            }
-
-            const tool = tryTools[toolIndex++];
-            console.log(`[screenshot] Trying: ${tool.cmd} ${tool.args.join(' ')}`);
-
-            execFile(tool.cmd, tool.args, {timeout: 5000}, (error) => {
-                if (error) {
-                    console.log(`[screenshot] ${tool.cmd} failed:`, error.message);
-                    tryNext();
-                    return;
-                }
-
-                // Read the captured file
-                try {
-                    const buffer = fs.readFileSync(tmpFile);
-                    fs.unlinkSync(tmpFile); // Clean up temp file
-
-                    // Get image dimensions from PNG header
-                    // PNG IHDR chunk starts at byte 16, width at 16-19, height at 20-23
-                    const width = buffer.readUInt32BE(16);
-                    const height = buffer.readUInt32BE(20);
-
-                    console.log(`[screenshot] Native capture: ${width}x${height}, ${buffer.length} bytes`);
-                    resolve({buffer, width, height});
-                } catch (readErr) {
-                    console.error(`[screenshot] Failed to read ${tool.cmd} output:`, readErr);
-                    tryNext();
-                }
-            });
-        }
-
-        tryNext();
-    });
-}
-
 // ─── IPC: Screenshot with overlay window (WeChat-style) ─────────────────
 let overlayWindow: BrowserWindow | null = null;
 
@@ -123,18 +46,30 @@ ipcMain.handle('screenshot-start', async () => {
     const mainWin = getMainWindow();
 
     try {
-        // Step 1: Native screenshot capture (reads frame buffer directly, no flicker)
-        console.log('[screenshot] Step 1: Native capture from frame buffer...');
-        const capture = await captureNativeScreenshot();
+        // Step 1: Capture full screen using desktopCapturer (fast, direct from GPU)
+        console.log('[screenshot] Step 1: Capturing screen...');
+        const primaryDisplay = screen.getPrimaryDisplay();
+        const {width, height} = primaryDisplay.size;
+        const scaleFactor = primaryDisplay.scaleFactor;
 
-        if (!capture) {
-            console.log('[screenshot] Native capture failed');
+        const sources = await desktopCapturer.getSources({
+            types: ['screen'],
+            thumbnailSize: {
+                width: Math.round(width * scaleFactor),
+                height: Math.round(height * scaleFactor),
+            },
+        });
+
+        if (sources.length === 0) {
+            console.log('[screenshot] No screen sources found');
             return null;
         }
 
-        const {buffer: pngBuffer, width: imgWidth, height: imgHeight} = capture;
+        const thumb = sources[0].thumbnail;
+        const pngBuffer = thumb.toPNG();
         const dataURL = `data:image/png;base64,${pngBuffer.toString('base64')}`;
-        console.log(`[screenshot] Captured: ${imgWidth}x${imgHeight}`);
+        const imgSize = thumb.getSize();
+        console.log(`[screenshot] Captured: ${imgSize.width}x${imgSize.height}`);
 
         // Step 2: Create fullscreen overlay window (covers entire screen, no DPI issues)
         overlayWindow = new BrowserWindow({
@@ -164,8 +99,8 @@ ipcMain.handle('screenshot-start', async () => {
         // Step 5: Send screenshot data to overlay
         overlayWindow.webContents.send('screenshot-data', {
             dataURL,
-            width: imgWidth,
-            height: imgHeight,
+            width: imgSize.width,
+            height: imgSize.height,
         });
 
         // Step 6: Wait for user to confirm or cancel

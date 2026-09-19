@@ -652,18 +652,12 @@ canvas { position: absolute; top: 0; left: 0; }
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             if (textInput.style.display !== 'none') {
-                confirmTextInput();
-            } else if (phase === 'annotating') {
-                // Back to selecting
-                phase = 'selecting';
-                selection = null;
-                actions = [];
-                redoStack = [];
-                annotCtx.clearRect(0, 0, annotCanvas.width, annotCanvas.height);
-                toolbar.style.display = 'none';
-                updateDims(null);
-                hint.style.display = 'block';
+                // Close text input only
+                textInput.style.display = 'none';
+                textInput.value = '';
+                textInput._pos = null;
             } else {
+                // Always cancel the screenshot entirely on ESC
                 doCancel();
             }
         } else if (e.key === 'Enter' && phase === 'annotating') {
