@@ -63,4 +63,15 @@ contextBridge.exposeInMainWorld('dedalix', {
         ipcRenderer.on('trigger-screenshot', handler);
         return () => ipcRenderer.removeListener('trigger-screenshot', handler);
     },
+
+    // Update the global screenshot shortcut (called when user changes it in settings)
+    setScreenshotShortcut: (shortcut: string): Promise<boolean> =>
+        ipcRenderer.invoke('set-screenshot-shortcut', shortcut),
+
+    // Listen for screenshot completed event (global shortcut mode)
+    onScreenshotCompleted: (callback: (result: {dataURL: string; width: number; height: number}) => void) => {
+        const handler = (_e: any, result: {dataURL: string; width: number; height: number}) => callback(result);
+        ipcRenderer.on('screenshot-completed', handler);
+        return () => ipcRenderer.removeListener('screenshot-completed', handler);
+    },
 });

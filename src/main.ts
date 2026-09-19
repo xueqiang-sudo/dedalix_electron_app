@@ -36,7 +36,8 @@ ipcMain.handle('download-and-open-file', async (_event, url: string, filename: s
 // ─── IPC: Screenshot with overlay window (WeChat-style) ─────────────────
 let overlayWindow: BrowserWindow | null = null;
 
-ipcMain.handle('screenshot-start', async () => {
+// ─── 截图核心函数（可被 IPC 和全局快捷键调用）───────────────────
+async function handleScreenshotStart(): Promise<{dataURL: string; width: number; height: number} | null> {
     // Prevent concurrent screenshots
     if (overlayWindow) {
         console.log('[screenshot] Already in progress');
@@ -176,6 +177,11 @@ ipcMain.handle('screenshot-start', async () => {
         console.error('[screenshot] Failed:', err);
         return null;
     }
+}
+
+// ─── IPC handler: webapp 调用截图（点击按钮时）──────────────────
+ipcMain.handle('screenshot-start', async () => {
+    return handleScreenshotStart();
 });
 
 // ─── Remove default menu (File, Edit, View, etc.) ──────────────────────
@@ -234,12 +240,62 @@ if (!gotTheLock) {
         createMainWindow(coldStartDeepLink);
         createTray();
 
-        // ─── Register global screenshot shortcut (Ctrl+Alt+A) ─────────
-        globalShortcut.register('CommandOrControl+Alt+A', () => {
-            const win = getMainWindow();
-            if (win && !win.isDestroyed()) {
-                win.webContents.send('trigger-screenshot');
+        // ─── Screenshot shortcut management ─────────────────────────────
+        let currentShortcutAccelerator = 'CommandOrControl+Alt+A';
+
+        // 将 webapp 格式的快捷键 (Ctrl+Alt+A) 转换为 Electron accelerator 格式
+        function toElectronAccelerator(shortcut: string): string {
+            return shortcut
+                .replace(/\bCtrl\b/gi, 'CommandOrControl')
+                .replace(/\bCmd\b/gi, 'CommandOrControl');
+        }
+
+        // 注册/更新全局截图快捷键
+        function registerScreenshotShortcut(accelerator: string): boolean {
+            // 先注销旧的快捷键
+            if (currentShortcutAccelerator) {
+                globalShortcut.unregister(currentShortcutAccelerator);
             }
+
+            // 注册新的快捷键
+            const success = globalShortcut.register(accelerator, async () => {
+                console.log('[screenshot] Global shortcut triggered:', accelerator);
+                try {
+                    const result = await handleScreenshotStart();
+                    if (result) {
+                        console.log('[screenshot] Global shortcut: image copied to clipboard');
+                        const win = getMainWindow();
+                        if (win && !win.isDestroyed()) {
+                            win.webContents.send('screenshot-completed', result);
+                        }
+                    }
+                } catch (err) {
+                    console.error('[screenshot] Global shortcut failed:', err);
+                }
+            });
+
+            if (success) {
+                currentShortcutAccelerator = accelerator;
+                console.log('[screenshot] Registered shortcut:', accelerator);
+            } else {
+                console.error('[screenshot] Failed to register shortcut:', accelerator);
+                // 回退到默认快捷键
+                if (accelerator !== 'CommandOrControl+Alt+A') {
+                    registerScreenshotShortcut('CommandOrControl+Alt+A');
+                }
+            }
+
+            return success;
+        }
+
+        // 注册默认快捷键
+        registerScreenshotShortcut(currentShortcutAccelerator);
+
+        // IPC: webapp 通知更新快捷键
+        ipcMain.handle('set-screenshot-shortcut', (_event, shortcut: string) => {
+            const accelerator = toElectronAccelerator(shortcut);
+            console.log('[screenshot] Updating shortcut:', shortcut, '→', accelerator);
+            return registerScreenshotShortcut(accelerator);
         });
 
         // macOS: re-create window when dock icon is clicked and no windows exist
