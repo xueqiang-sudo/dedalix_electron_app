@@ -100,6 +100,68 @@ canvas { position: absolute; top: 0; left: 0; }
 }
 .color-btn.active { border-color: #fff !important; }
 
+/* ─── Magnifier + Color Picker (WeChat-style) ─── */
+#magnifier {
+    position: fixed;
+    z-index: 20;
+    pointer-events: none;
+    display: none;
+    width: 160px;
+}
+#magCanvas {
+    width: 160px;
+    height: 160px;
+    border: 1px solid rgba(255,255,255,0.5);
+    border-radius: 3px;
+    background: #000;
+    display: block;
+}
+#magCrossH, #magCrossV {
+    position: absolute;
+    background: rgba(24,144,255,0.6);
+    pointer-events: none;
+}
+#magCrossH {
+    left: 0; width: 160px; height: 1px; top: 80px;
+}
+#magCrossV {
+    top: 0; height: 160px; width: 1px; left: 80px;
+}
+#magCenter {
+    position: absolute;
+    width: 6px; height: 6px;
+    border: 1px solid #1890ff;
+    background: transparent;
+    top: 77px; left: 77px;
+    pointer-events: none;
+}
+#magInfo {
+    background: rgba(0,0,0,0.82);
+    color: #fff;
+    font-size: 12px;
+    font-family: "Consolas", "Microsoft YaHei", monospace;
+    padding: 8px 12px;
+    border-radius: 0 0 3px 3px;
+    line-height: 1.7;
+}
+#magInfo .mag-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+#magInfo .mag-swatch {
+    width: 14px; height: 14px;
+    border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 2px;
+    display: inline-block;
+    flex-shrink: 0;
+}
+#magInfo .mag-hint {
+    color: rgba(255,255,255,0.4);
+    font-size: 11px;
+    margin-top: 3px;
+}
+
 /* Text input */
 #textInput {
     position: fixed;
@@ -134,6 +196,21 @@ canvas { position: absolute; top: 0; left: 0; }
 <input id="textInput" type="text" />
 
 <div id="hint">拖拽选择截图区域，Esc 取消</div>
+
+<!-- 微信风格放大镜 + 取色器 -->
+<div id="magnifier">
+    <div style="position:relative;width:160px;height:160px;">
+        <canvas id="magCanvas" width="160" height="160"></canvas>
+        <div id="magCrossH"></div>
+        <div id="magCrossV"></div>
+        <div id="magCenter"></div>
+    </div>
+    <div id="magInfo">
+        <div class="mag-row">坐标: <span id="magCoord">0, 0</span></div>
+        <div class="mag-row"><span class="mag-swatch" id="magSwatch"></span> RGB(<span id="magRGB">0, 0, 0</span>)</div>
+        <div class="mag-hint">按 Ctrl+C 复制色值</div>
+    </div>
+</div>
 
 <div id="toolbar">
     <button id="toolPen" class="active" title="画笔">
@@ -339,6 +416,7 @@ canvas { position: absolute; top: 0; left: 0; }
                 phase = 'annotating';
                 hint.style.display = 'none';
                 sizeLabel.style.display = 'none';
+                magnifier.style.display = 'none';
                 // Show toolbar
                 toolbar.style.display = 'flex';
                 var tbTop = offY + r.y + r.h + 8;
@@ -365,6 +443,72 @@ canvas { position: absolute; top: 0; left: 0; }
         if (phase === 'selecting' && dragStart) {
             // Treat as mouseup
             annotCanvas.dispatchEvent(new MouseEvent('mouseup'));
+        }
+    });
+
+    // ─── Magnifier + Color Picker ───────────────────────────────────
+    const magnifier = document.getElementById('magnifier');
+    const magCtx = document.getElementById('magCanvas').getContext('2d');
+    const magCoord = document.getElementById('magCoord');
+    const magRGB = document.getElementById('magRGB');
+    const magSwatch = document.getElementById('magSwatch');
+    const MAG_SIZE = 160;       // magnifier display size
+    const MAG_ZOOM = 5;         // zoom factor
+    const MAG_SRC = MAG_SIZE / MAG_ZOOM;  // source pixels shown (32px)
+    let currentHexColor = '#000000';
+
+    function updateMagnifier(clientX, clientY) {
+        // Position magnifier near cursor (offset to bottom-right, flip near edges)
+        var mx = clientX + 24;
+        var my = clientY + 24;
+        if (mx + MAG_SIZE + 10 > window.innerWidth) mx = clientX - MAG_SIZE - 24;
+        if (my + MAG_SIZE + 80 > window.innerHeight) my = clientY - MAG_SIZE - 80;
+        magnifier.style.left = mx + 'px';
+        magnifier.style.top = my + 'px';
+
+        // Calculate source position on the background canvas
+        var canvasX = clientX - offX;
+        var canvasY = clientY - offY;
+
+        // Clamp to canvas bounds
+        canvasX = Math.max(0, Math.min(canvasX, bgCanvas.width - 1));
+        canvasY = Math.max(0, Math.min(canvasY, bgCanvas.height - 1));
+
+        // Draw zoomed region
+        var srcX = canvasX - MAG_SRC / 2;
+        var srcY = canvasY - MAG_SRC / 2;
+        magCtx.imageSmoothingEnabled = false;
+        magCtx.fillStyle = '#1a1a1a';
+        magCtx.fillRect(0, 0, MAG_SIZE, MAG_SIZE);
+        magCtx.drawImage(bgCanvas,
+            srcX, srcY, MAG_SRC, MAG_SRC,
+            0, 0, MAG_SIZE, MAG_SIZE
+        );
+
+        // Get pixel color at cursor (center of magnifier)
+        try {
+            var pixel = bgCtx.getImageData(
+                Math.round(canvasX), Math.round(canvasY), 1, 1
+            ).data;
+            var r = pixel[0], g = pixel[1], b = pixel[2];
+            currentHexColor = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+            magRGB.textContent = r + ', ' + g + ', ' + b;
+            magSwatch.style.background = currentHexColor;
+        } catch(e) { /* canvas tainted — skip */ }
+
+        // Update coordinates (original image resolution)
+        var origX = Math.round(canvasX / scale);
+        var origY = Math.round(canvasY / scale);
+        magCoord.textContent = origX + ', ' + origY;
+    }
+
+    // Document-level mousemove to track cursor everywhere
+    document.addEventListener('mousemove', function(e) {
+        if (phase === 'selecting') {
+            magnifier.style.display = 'block';
+            updateMagnifier(e.clientX, e.clientY);
+        } else if (phase === 'annotating') {
+            magnifier.style.display = 'none';
         }
     });
 
@@ -421,16 +565,10 @@ canvas { position: absolute; top: 0; left: 0; }
     textInput.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
-            e.stopPropagation(); // Prevent bubbling to document handler which would trigger doConfirm
+            e.stopPropagation();
             confirmTextInput();
         }
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopPropagation();
-            textInput.style.display = 'none';
-            textInput.value = '';
-            textInput._pos = null;
-        }
+        // ESC 由捕获阶段处理器统一处理，这里不再重复
     });
     textInput.addEventListener('blur', confirmTextInput);
 
@@ -649,19 +787,46 @@ canvas { position: absolute; top: 0; left: 0; }
     }
 
     // ─── Keyboard ──────────────────────────────────────────────────
+    // 使用捕获阶段（capture=true）确保 ESC 在任何元素处理器之前被拦截
+    // 全屏 Electron 窗口中，冒泡阶段的 ESC 可能被拦截导致需要按两次
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+
             if (textInput.style.display !== 'none') {
-                // Close text input only
+                // 文本输入框可见 → 关闭文本输入框
                 textInput.style.display = 'none';
                 textInput.value = '';
                 textInput._pos = null;
             } else {
-                // Always cancel the screenshot entirely on ESC
+                // 直接取消截图
                 doCancel();
             }
-        } else if (e.key === 'Enter' && phase === 'annotating') {
-            // Only confirm screenshot if NOT typing in text input
+        } else if ((e.ctrlKey || e.metaKey) && e.key === 'c' && phase === 'selecting') {
+            // Ctrl+C: 复制当前取色器的色值
+            e.preventDefault();
+            e.stopPropagation();
+            if (window.overlayAPI && window.overlayAPI.copyText) {
+                window.overlayAPI.copyText(currentHexColor);
+            }
+            // 短暂显示复制成功提示
+            var hint = document.getElementById('magInfo').querySelector('.mag-hint');
+            if (hint) {
+                var orig = hint.textContent;
+                hint.textContent = '✓ 已复制 ' + currentHexColor;
+                hint.style.color = '#52c41a';
+                setTimeout(function() {
+                    hint.textContent = orig;
+                    hint.style.color = '';
+                }, 1500);
+            }
+        }
+    }, true);  // ← capture phase: 在所有元素处理器之前触发
+
+    // Enter 键确认（冒泡阶段即可，不需要捕获）
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && phase === 'annotating') {
             if (e.target !== textInput && textInput.style.display === 'none') {
                 doConfirm();
             }

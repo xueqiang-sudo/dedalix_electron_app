@@ -5,7 +5,7 @@
  * to communicate with the Electron main process.
  */
 
-import {contextBridge, ipcRenderer} from 'electron';
+import {contextBridge, ipcRenderer, clipboard} from 'electron';
 
 contextBridge.exposeInMainWorld('overlayAPI', {
     /** Receive the full-screen screenshot data from main process */
@@ -21,5 +21,10 @@ contextBridge.exposeInMainWorld('overlayAPI', {
     /** Cancel the screenshot */
     cancel: () => {
         ipcRenderer.send('screenshot-cancel');
+    },
+
+    /** Copy text to clipboard (for color picker) */
+    copyText: (text: string) => {
+        clipboard.writeText(text);
     },
 });
