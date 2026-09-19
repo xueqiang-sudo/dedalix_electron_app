@@ -72,8 +72,8 @@ export function getDeepLinkURL(args: string[]): string | undefined {
  * Convert a dedalix:// URL to an https:// URL.
  *
  * Example:
- *   dedalix://ai.optibot.cn:8066/invite?id=abc
- *   → https://ai.optibot.cn:8066/invite?id=abc
+ *   dedalix://ai.optibot.cn:8065/invite?id=abc
+ *   → https://ai.optibot.cn:8065/invite?id=abc
  */
 export function protocolToHTTPS(protocolUrl: string): string {
     return protocolUrl.replace(new RegExp(`^${PROTOCOL}://`, 'i'), 'https://');
@@ -170,7 +170,7 @@ export function handleWindowOpen(
 }
 
 /** The app's server URL. */
-export const APP_URL = 'https://ai.optibot.cn:8066';
+export const APP_URL = 'https://ai.optibot.cn:8065';
 
 /**
  * Get the app's base URL.
