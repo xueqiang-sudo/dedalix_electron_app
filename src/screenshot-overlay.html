@@ -106,11 +106,11 @@ canvas { position: absolute; top: 0; left: 0; }
     z-index: 20;
     pointer-events: none;
     display: none;
-    width: 160px;
+    width: 100px;
 }
 #magCanvas {
-    width: 160px;
-    height: 160px;
+    width: 100px;
+    height: 100px;
     border: 1px solid rgba(255,255,255,0.5);
     border-radius: 3px;
     background: #000;
@@ -122,27 +122,30 @@ canvas { position: absolute; top: 0; left: 0; }
     pointer-events: none;
 }
 #magCrossH {
-    left: 0; width: 160px; height: 1px; top: 80px;
+    left: 0; width: 100px; height: 1px; top: 50px;
 }
 #magCrossV {
-    top: 0; height: 160px; width: 1px; left: 80px;
+    top: 0; height: 100px; width: 1px; left: 50px;
 }
 #magCenter {
     position: absolute;
     width: 6px; height: 6px;
     border: 1px solid #1890ff;
     background: transparent;
-    top: 77px; left: 77px;
+    top: 47px; left: 47px;
     pointer-events: none;
 }
 #magInfo {
     background: rgba(0,0,0,0.82);
     color: #fff;
-    font-size: 12px;
+    font-size: 10px;
     font-family: "Consolas", "Microsoft YaHei", monospace;
-    padding: 8px 12px;
+    padding: 5px 6px;
     border-radius: 0 0 3px 3px;
-    line-height: 1.7;
+    line-height: 1.5;
+    width: 100px;
+    white-space: nowrap;
+    overflow: hidden;
 }
 #magInfo .mag-row {
     display: flex;
@@ -150,7 +153,7 @@ canvas { position: absolute; top: 0; left: 0; }
     gap: 8px;
 }
 #magInfo .mag-swatch {
-    width: 14px; height: 14px;
+    width: 12px; height: 12px;
     border: 1px solid rgba(255,255,255,0.4);
     border-radius: 2px;
     display: inline-block;
@@ -158,8 +161,8 @@ canvas { position: absolute; top: 0; left: 0; }
 }
 #magInfo .mag-hint {
     color: rgba(255,255,255,0.4);
-    font-size: 11px;
-    margin-top: 3px;
+    font-size: 9px;
+    margin-top: 2px;
 }
 
 /* Text input */
@@ -199,15 +202,15 @@ canvas { position: absolute; top: 0; left: 0; }
 
 <!-- 微信风格放大镜 + 取色器 -->
 <div id="magnifier">
-    <div style="position:relative;width:160px;height:160px;">
-        <canvas id="magCanvas" width="160" height="160"></canvas>
+    <div style="position:relative;width:100px;height:100px;">
+        <canvas id="magCanvas" width="100" height="100"></canvas>
         <div id="magCrossH"></div>
         <div id="magCrossV"></div>
         <div id="magCenter"></div>
     </div>
     <div id="magInfo">
         <div class="mag-row">坐标: <span id="magCoord">0, 0</span></div>
-        <div class="mag-row"><span class="mag-swatch" id="magSwatch"></span> RGB(<span id="magRGB">0, 0, 0</span>)</div>
+        <div class="mag-row"><span class="mag-swatch" id="magSwatch"></span> <span id="magHex">#000000</span></div>
         <div class="mag-hint">按 Ctrl+C 复制色值</div>
     </div>
 </div>
@@ -450,19 +453,19 @@ canvas { position: absolute; top: 0; left: 0; }
     const magnifier = document.getElementById('magnifier');
     const magCtx = document.getElementById('magCanvas').getContext('2d');
     const magCoord = document.getElementById('magCoord');
-    const magRGB = document.getElementById('magRGB');
+    const magHex = document.getElementById('magHex');
     const magSwatch = document.getElementById('magSwatch');
-    const MAG_SIZE = 160;       // magnifier display size
-    const MAG_ZOOM = 5;         // zoom factor
-    const MAG_SRC = MAG_SIZE / MAG_ZOOM;  // source pixels shown (32px)
+    const MAG_SIZE = 100;       // magnifier display size (px)
+    const MAG_ZOOM = 3;         // zoom factor
+    const MAG_SRC = Math.round(MAG_SIZE / MAG_ZOOM);  // source pixels shown (~33px)
     let currentHexColor = '#000000';
 
     function updateMagnifier(clientX, clientY) {
         // Position magnifier near cursor (offset to bottom-right, flip near edges)
-        var mx = clientX + 24;
-        var my = clientY + 24;
-        if (mx + MAG_SIZE + 10 > window.innerWidth) mx = clientX - MAG_SIZE - 24;
-        if (my + MAG_SIZE + 80 > window.innerHeight) my = clientY - MAG_SIZE - 80;
+        var mx = clientX + 20;
+        var my = clientY + 20;
+        if (mx + MAG_SIZE + 10 > window.innerWidth) mx = clientX - MAG_SIZE - 20;
+        if (my + MAG_SIZE + 70 > window.innerHeight) my = clientY - MAG_SIZE - 70;
         magnifier.style.left = mx + 'px';
         magnifier.style.top = my + 'px';
 
@@ -492,7 +495,7 @@ canvas { position: absolute; top: 0; left: 0; }
             ).data;
             var r = pixel[0], g = pixel[1], b = pixel[2];
             currentHexColor = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
-            magRGB.textContent = r + ', ' + g + ', ' + b;
+            magHex.textContent = currentHexColor;
             magSwatch.style.background = currentHexColor;
         } catch(e) { /* canvas tainted — skip */ }
 
