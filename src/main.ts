@@ -8,7 +8,7 @@
  *   4. Handle deep links from protocol invocations (macOS open-url, Windows second-instance)
  */
 
-import {app, BrowserWindow, Menu, ipcMain, net, shell, desktopCapturer, screen, globalShortcut} from 'electron';
+import {app, BrowserWindow, Menu, ipcMain, net, shell, desktopCapturer, screen, globalShortcut, clipboard, nativeImage} from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -126,6 +126,17 @@ ipcMain.handle('screenshot-start', async () => {
 
             ipcMain.once('screenshot-confirm', (_e, result) => {
                 console.log('[screenshot] Confirmed:', result ? `${result.width}x${result.height}` : 'null');
+                // Copy image to clipboard (like WeChat) so user can Ctrl+V paste
+                if (result && result.dataURL) {
+                    try {
+                        const base64 = result.dataURL.split(',')[1];
+                        const img = nativeImage.createFromBuffer(Buffer.from(base64, 'base64'));
+                        clipboard.writeImage(img);
+                        console.log('[screenshot] Image copied to clipboard');
+                    } catch (err) {
+                        console.error('[screenshot] Failed to copy to clipboard:', err);
+                    }
+                }
                 resolve(result);
                 cleanup();
             });
