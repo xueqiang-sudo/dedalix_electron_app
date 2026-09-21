@@ -170,7 +170,7 @@ export function handleWindowOpen(
 }
 
 /** The app's server URL. */
-export const APP_URL = 'https://ai.optibot.cn:8065';
+export const APP_URL = 'https://ai.optibot.cn:8066';
 
 /**
  * Get the app's base URL.
