@@ -53,6 +53,10 @@ contextBridge.exposeInMainWorld('dedalix', {
     downloadAndOpenFile: (url: string, filename: string) =>
         ipcRenderer.invoke('download-and-open-file', url, filename),
 
+    // Download a file with "Save As" dialog — user picks where to save
+    downloadSaveAs: (url: string, filename: string): Promise<string | null> =>
+        ipcRenderer.invoke('download-save-as', url, filename),
+
     // Capture the entire screen as a JPEG dataURL for the screenshot feature
     captureScreen: (): Promise<{dataURL: string; width: number; height: number} | null> =>
         ipcRenderer.invoke('screenshot-start'),

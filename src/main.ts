@@ -8,7 +8,7 @@
  *   4. Handle deep links from protocol invocations (macOS open-url, Windows second-instance)
  */
 
-import {app, BrowserWindow, Menu, ipcMain, net, shell, desktopCapturer, screen, globalShortcut, clipboard, nativeImage} from 'electron';
+import {app, BrowserWindow, Menu, ipcMain, net, shell, desktopCapturer, screen, globalShortcut, clipboard, nativeImage, dialog} from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -31,6 +31,24 @@ ipcMain.handle('download-and-open-file', async (_event, url: string, filename: s
     fs.writeFileSync(tempPath, buffer);
     await shell.openPath(tempPath);
     return tempPath;
+});
+
+// ─── IPC: Download file with "Save As" dialog ──────────────────────────
+ipcMain.handle('download-save-as', async (event, url: string, filename: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const {canceled, filePath} = await dialog.showSaveDialog(win!, {
+        defaultPath: filename,
+    });
+    if (canceled || !filePath) {
+        return null; // User cancelled
+    }
+    const resp = await net.fetch(url);
+    if (!resp.ok) {
+        throw new Error(`Download failed: ${resp.status} ${resp.statusText}`);
+    }
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    fs.writeFileSync(filePath, buffer);
+    return filePath;
 });
 
 // ─── IPC: Screenshot with overlay window (WeChat-style) ─────────────────
