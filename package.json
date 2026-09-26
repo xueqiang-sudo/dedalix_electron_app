@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Dedalix 协作平台桌面客户端",
   "main": "dist/main.js",
-  "author": "Optibot",
+  "author": "Dedalix",
   "license": "MIT",
   "scripts": {
     "build": "tsc && cp src/screenshot-overlay.html dist/",
