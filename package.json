@@ -6,7 +6,7 @@
   "author": "Dedalix",
   "license": "MIT",
   "scripts": {
-    "build": "tsc && cp src/screenshot-overlay.html dist/ && mkdir -p dist/renderer && cp src/renderer/erp-bridge.js dist/renderer/",
+    "build": "tsc && node scripts/build.js",
     "watch": "tsc -w",
     "start": "npm run build && electron .",
     "pack": "npm run build && electron-builder --dir",
