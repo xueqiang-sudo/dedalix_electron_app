@@ -142,6 +142,7 @@ export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
             nodeIntegration: false,
             sandbox: false,
             webSecurity: true,
+            webviewTag: true,
         },
     };
 

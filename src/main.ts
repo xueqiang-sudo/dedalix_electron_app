@@ -212,7 +212,7 @@ ipcMain.handle('erp-set-credentials', (_event, creds: {api_key: string; api_secr
 
     // Set up webRequest hook for the ERP session
     const erpSession = session.fromPartition('persist:erp');
-    const erpURL = creds.erp_url || 'http://erp.optibot.cn:8080';
+    const erpURL = 'https://erp.optibot.cn:8443';
     const urlPattern = erpURL.replace(/\/$/, '') + '/*';
 
     erpSession.webRequest.onBeforeSendHeaders(
