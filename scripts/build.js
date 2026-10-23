@@ -33,4 +33,18 @@ if (fs.existsSync(erpBridge)) {
   console.warn(`  warning: ${path.relative(root, erpBridge)} not found, skipping`);
 }
 
+// 3. services/*.js → dist/services/
+const servicesDir = path.join(src, 'services');
+if (fs.existsSync(servicesDir)) {
+  const files = fs.readdirSync(servicesDir).filter(f => f.endsWith('.js'));
+  for (const file of files) {
+    copyFile(
+      path.join(servicesDir, file),
+      path.join(dist, 'services', file)
+    );
+  }
+} else {
+  console.warn(`  warning: ${path.relative(root, servicesDir)} not found, skipping`);
+}
+
 console.log('Build assets copied successfully.');
