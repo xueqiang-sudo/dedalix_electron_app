@@ -86,4 +86,8 @@ contextBridge.exposeInMainWorld('dedalix', {
     // Get the preload script path for ERP webview
     getErpPreloadPath: (): Promise<string> =>
         ipcRenderer.invoke('erp-get-preload-path'),
+
+    // Get the erp-bridge.js source code for injection into ERP webview
+    getErpBridgeCode: (): Promise<string> =>
+        ipcRenderer.invoke('erp-get-bridge-code'),
 });

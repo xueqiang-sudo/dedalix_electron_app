@@ -128,6 +128,14 @@ ipcMain.handle('scale:list-ports', async () => {
 
 ipcMain.handle('scale:connect', async (_event, portPath: string, options: any) => {
     if (!scaleService) throw new Error('Scale service not initialized');
+    // If already connected to the same port, return success without reconnecting
+    if (scaleService.connected && scaleService.portPath === portPath) {
+        return {success: true, alreadyConnected: true};
+    }
+    // If connected to a different port, disconnect first
+    if (scaleService.connected) {
+        await scaleService.disconnect();
+    }
     await scaleService.connect(portPath, options || {});
     erpStore.set('lastScalePort', portPath);
     erpStore.set('lastScaleOptions', options || {});
@@ -244,6 +252,21 @@ ipcMain.handle('erp-set-credentials', (_event, creds: {api_key: string; api_secr
 // Return the preload path for ERP webview
 ipcMain.handle('erp-get-preload-path', () => {
     return pathToFileURL(path.join(__dirname, 'erp-preload.js')).href;
+});
+
+// Return the erp-bridge.js content for injection into webview
+let _erpBridgeCode: string | null = null;
+ipcMain.handle('erp-get-bridge-code', () => {
+    if (!_erpBridgeCode) {
+        const bridgePath = path.join(__dirname, 'renderer', 'erp-bridge.js');
+        try {
+            _erpBridgeCode = fs.readFileSync(bridgePath, 'utf-8');
+        } catch (err) {
+            console.error('[erp] Failed to read bridge code:', err);
+            return '';
+        }
+    }
+    return _erpBridgeCode;
 });
 
 // ─── IPC: Screenshot with overlay window (WeChat-style) ─────────────────
