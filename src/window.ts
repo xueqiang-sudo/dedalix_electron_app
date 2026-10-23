@@ -154,8 +154,17 @@ export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
     mainWindow = new BrowserWindow(windowOptions);
 
     // Fix window title — prevent Mattermost document.title changes from updating it
+    const APP_TITLE = 'Dedalix';
     mainWindow.webContents.on('page-title-updated', (event) => {
         event.preventDefault();
+        mainWindow?.setTitle(APP_TITLE);
+    });
+    // Also force title after navigation events
+    mainWindow.webContents.on('did-navigate', () => {
+        mainWindow?.setTitle(APP_TITLE);
+    });
+    mainWindow.webContents.on('did-navigate-in-page', () => {
+        mainWindow?.setTitle(APP_TITLE);
     });
 
     // Force hide menu bar (multiple methods for reliability, matching optibot-erp-desktop)
