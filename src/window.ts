@@ -152,6 +152,11 @@ export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
 
     mainWindow = new BrowserWindow(windowOptions);
 
+    // Fix window title — prevent Mattermost document.title changes from updating it
+    mainWindow.webContents.on('page-title-updated', (event) => {
+        event.preventDefault();
+    });
+
     // Force hide menu bar (multiple methods for reliability, matching optibot-erp-desktop)
     mainWindow.setMenuBarVisibility(false);
     mainWindow.removeMenu();
@@ -214,13 +219,82 @@ export function createMainWindow(deepLinkUrl?: string): BrowserWindow {
     mainWindow.webContents.on('did-navigate-in-page', injectFont);
     mainWindow.webContents.on('did-frame-finish-load', injectFont);
 
-    // Navigate to the deep-link URL or the default app URL
+    // Navigate to the deep-linkURL or the default app URL
     const targetUrl = deepLinkUrl
         ? deepLinkUrl.replace(/^dedalix:/i, 'https:')
         : getAppURL();
 
+    // ─── Load error handling ──────────────────────────────────────────────
+    // Show error page with retry button when the main page fails to load
+    let retryTimer: NodeJS.Timeout | null = null;
+    let retryCount = 0;
+    const MAX_AUTO_RETRY = 5;
+    const RETRY_INTERVAL = 5000; // 5 seconds
+
+    function showErrorPage(errorDesc: string) {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        const retryUrl = encodeURIComponent(targetUrl);
+        const errorHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head><meta charset="utf-8"><title>Dedalix</title></head>
+            <body style="margin:0; display:flex; align-items:center; justify-content:center; height:100vh; background:#f5f5f5; font-family:'Microsoft YaHei','PingFang SC',sans-serif;">
+                <div style="text-align:center; color:#333;">
+                    <div style="font-size:64px; margin-bottom:20px;">⚠️</div>
+                    <h2 style="margin:0 0 12px 0; font-size:20px; font-weight:500;">无法连接到服务器</h2>
+                    <p style="color:#666; font-size:14px; margin:0 0 8px 0;">${errorDesc}</p>
+                    <p style="color:#999; font-size:12px; margin:0 0 24px 0;">${RETRY_INTERVAL / 1000} 秒后自动重试（第 ${retryCount}/${MAX_AUTO_RETRY} 次）</p>
+                    <button onclick="location.href=decodeURIComponent('${retryUrl}')" style="padding:10px 32px; font-size:14px; color:#fff; background:#166de0; border:none; border-radius:4px; cursor:pointer;">
+                        立即重试
+                    </button>
+                </div>
+            </body>
+            </html>
+        `;
+        mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`).catch(() => {});
+    }
+
+    function scheduleRetry() {
+        if (retryTimer) clearInterval(retryTimer);
+        retryCount++;
+        if (retryCount > MAX_AUTO_RETRY) {
+            console.log(`[window] Max auto-retry (${MAX_AUTO_RETRY}) reached, stopping.`);
+            return;
+        }
+        console.log(`[window] Auto-retry #${retryCount} in ${RETRY_INTERVAL / 1000}s...`);
+        retryTimer = setTimeout(() => {
+            if (!mainWindow || mainWindow.isDestroyed()) return;
+            console.log(`[window] Auto-retry #${retryCount}: loading ${targetUrl}`);
+            mainWindow.loadURL(targetUrl).catch((err) => {
+                console.error(`[window] Auto-retry failed:`, err);
+                showErrorPage(`连接失败 (${err.message})，${RETRY_INTERVAL / 1000} 秒后自动重试`);
+                scheduleRetry();
+            });
+        }, RETRY_INTERVAL);
+    }
+
+    // Handle main frame load failures (network errors, DNS failures, etc.)
+    mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, _validatedURL, isMainFrame) => {
+        if (!isMainFrame) return; // Only handle main frame failures
+        if (errorCode === -3) return; // ERR_ABORTED (intentional cancellation)
+        console.error(`[window] Load failed: ${errorCode} ${errorDescription}`);
+        showErrorPage(`${errorDescription} (${errorCode})`);
+        scheduleRetry();
+    });
+
+    // Reset retry count on successful load
+    mainWindow.webContents.on('did-finish-load', () => {
+        retryCount = 0;
+        if (retryTimer) {
+            clearTimeout(retryTimer);
+            retryTimer = null;
+        }
+    });
+
     mainWindow.loadURL(targetUrl).catch((err) => {
         console.error(`[window] Failed to load ${targetUrl}:`, err);
+        showErrorPage(`连接失败 (${err.message})，${RETRY_INTERVAL / 1000} 秒后自动重试`);
+        scheduleRetry();
     });
 
     // ─── Close confirmation dialog ──────────────────────────────────
