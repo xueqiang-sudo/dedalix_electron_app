@@ -6,7 +6,7 @@
   "author": "Dedalix",
   "license": "MIT",
   "scripts": {
-    "build": "tsc && cp src/screenshot-overlay.html dist/",
+    "build": "tsc && cp src/screenshot-overlay.html dist/ && mkdir -p dist/renderer && cp src/renderer/erp-bridge.js dist/renderer/",
     "watch": "tsc -w",
     "start": "npm run build && electron .",
     "pack": "npm run build && electron-builder --dir",
@@ -22,6 +22,8 @@
     "typescript": "^5.4.0"
   },
   "dependencies": {
-    "electron-store": "^8.2.0"
+    "electron-store": "^8.2.0",
+    "serialport": "^12.0.0",
+    "electron-log": "^5.0.0"
   }
 }

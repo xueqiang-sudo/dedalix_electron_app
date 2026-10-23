@@ -8,9 +8,16 @@
  *   4. Handle deep links from protocol invocations (macOS open-url, Windows second-instance)
  */
 
-import {app, BrowserWindow, Menu, ipcMain, net, shell, desktopCapturer, screen, globalShortcut, clipboard, nativeImage, dialog} from 'electron';
+import {app, BrowserWindow, Menu, ipcMain, net, shell, desktopCapturer, screen, globalShortcut, clipboard, nativeImage, dialog, session} from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import Store from 'electron-store';
+import {pathToFileURL} from 'url';
+
+// Hardware services (ported from optibot-erp-desktop)
+// These are CommonJS modules, use require()
+const ScaleService = require('./services/scale-service');
+const PrinterService = require('./services/printer-service');
 
 import {
     registerProtocol,
@@ -49,6 +56,194 @@ ipcMain.handle('download-save-as', async (event, url: string, filename: string) 
     const buffer = Buffer.from(await resp.arrayBuffer());
     fs.writeFileSync(filePath, buffer);
     return filePath;
+});
+
+// ─── ERP Hardware Services ──────────────────────────────────────────────
+const erpStore = new Store({
+    defaults: {
+        lastScalePort: '',
+        lastScaleOptions: {},
+        lastPrinterId: '',
+        autoConnectScale: false,
+        scaleAverageWindow: 5,
+    },
+});
+
+let scaleService: any = null;
+let printerService: any = null;
+
+function initERPServices() {
+    const mainWin = getMainWindow();
+    if (!mainWin) return;
+
+    // Initialize scale service
+    scaleService = new ScaleService({
+        emptyThreshold: 0.01,
+    });
+
+    scaleService.on('weight', (weight: any) => {
+        const win = getMainWindow();
+        if (win && !win.isDestroyed()) {
+            win.webContents.send('scale:weight', weight);
+        }
+    });
+    scaleService.on('status', (status: any) => {
+        const win = getMainWindow();
+        if (win && !win.isDestroyed()) {
+            win.webContents.send('scale:status', status);
+        }
+    });
+    scaleService.on('error', (error: Error) => {
+        const win = getMainWindow();
+        if (win && !win.isDestroyed()) {
+            win.webContents.send('scale:error', error.message);
+        }
+    });
+
+    // Initialize printer service
+    printerService = new PrinterService();
+    printerService.on('status', (status: any) => {
+        const win = getMainWindow();
+        if (win && !win.isDestroyed()) {
+            win.webContents.send('printer:status', status);
+        }
+    });
+    printerService.on('error', (error: Error) => {
+        const win = getMainWindow();
+        if (win && !win.isDestroyed()) {
+            win.webContents.send('printer:error', error.message);
+        }
+    });
+}
+
+// ─── IPC: ERP Hardware (Scale) ──────────────────────────────────────────
+ipcMain.handle('scale:list-ports', async () => {
+    if (!scaleService) return [];
+    try {
+        return await scaleService.listPorts();
+    } catch {
+        return [];
+    }
+});
+
+ipcMain.handle('scale:connect', async (_event, portPath: string, options: any) => {
+    if (!scaleService) throw new Error('Scale service not initialized');
+    await scaleService.connect(portPath, options || {});
+    erpStore.set('lastScalePort', portPath);
+    erpStore.set('lastScaleOptions', options || {});
+    erpStore.set('autoConnectScale', true);
+    return {success: true};
+});
+
+ipcMain.handle('scale:disconnect', async () => {
+    if (!scaleService) return {success: true};
+    await scaleService.disconnect();
+    erpStore.set('autoConnectScale', false);
+    return {success: true};
+});
+
+ipcMain.handle('scale:get-status', () => {
+    if (!scaleService) return {connected: false, port: null};
+    return scaleService.getStatus();
+});
+
+ipcMain.handle('scale:reset-reading', () => {
+    if (scaleService) scaleService.resetReading();
+    return {success: true};
+});
+
+// ─── IPC: Serial ports ──────────────────────────────────────────────────
+ipcMain.handle('serial:list-ports', async () => {
+    if (!scaleService) return [];
+    try {
+        return await scaleService.listPorts();
+    } catch {
+        return [];
+    }
+});
+
+// ─── IPC: ERP Hardware (Printer) ────────────────────────────────────────
+ipcMain.handle('printer:list', async () => {
+    if (!printerService) return [];
+    try {
+        return await printerService.listPrinters();
+    } catch {
+        return [];
+    }
+});
+
+ipcMain.handle('printer:print-label', async (_event, printerId: string, labelConfig: any) => {
+    if (!printerService) throw new Error('Printer service not initialized');
+    erpStore.set('lastPrinterId', printerId);
+    return await printerService.printLabel(printerId, labelConfig);
+});
+
+ipcMain.handle('printer:get-status', () => {
+    if (!printerService) return {connected: false, printers: []};
+    return printerService.getStatus();
+});
+
+// ─── IPC: Device info ───────────────────────────────────────────────────
+ipcMain.handle('device:get-info', () => {
+    return {
+        scale: scaleService ? scaleService.getStatus() : {connected: false, port: null},
+        printer: printerService ? printerService.getStatus() : {connected: false, printers: []},
+    };
+});
+
+// ─── IPC: App config ────────────────────────────────────────────────────
+ipcMain.handle('app:get-version', () => app.getVersion());
+ipcMain.handle('app:get-config', () => ({
+    lastScalePort: erpStore.get('lastScalePort'),
+    lastScaleOptions: erpStore.get('lastScaleOptions'),
+    lastPrinterId: erpStore.get('lastPrinterId'),
+    autoConnectScale: erpStore.get('autoConnectScale'),
+}));
+ipcMain.handle('app:set-config', (_event, key: string, value: any) => {
+    erpStore.set(key, value);
+    return {success: true};
+});
+
+// ─── IPC: ERP WebView management ────────────────────────────────────────
+let erpCredentials: {api_key: string; api_secret: string; erp_url: string} | null = null;
+
+ipcMain.handle('erp-set-credentials', (_event, creds: {api_key: string; api_secret: string; erp_url: string}) => {
+    erpCredentials = creds;
+
+    // Set up webRequest hook for the ERP session
+    const erpSession = session.fromPartition('persist:erp');
+    const erpURL = creds.erp_url || 'http://erp.optibot.cn:8080';
+    const urlPattern = erpURL.replace(/\/$/, '') + '/*';
+
+    erpSession.webRequest.onBeforeSendHeaders(
+        {urls: [urlPattern]},
+        (details, callback) => {
+            const headers = {...details.requestHeaders};
+            if (erpCredentials) {
+                headers['Authorization'] = `token ${erpCredentials.api_key}:${erpCredentials.api_secret}`;
+            }
+            // Force Host header for nginx virtual host compatibility
+            try {
+                const url = new URL(erpURL);
+                headers['Host'] = url.host;
+            } catch {
+                // ignore
+            }
+            // Replace User-Agent to hide Electron identity
+            if (headers['User-Agent']) {
+                headers['User-Agent'] = headers['User-Agent'].replace(/Electron\/[\d.]+/, 'Chrome/120.0.0.0');
+            }
+            callback({requestHeaders: headers});
+        },
+    );
+
+    console.log('[erp] Credentials set, webRequest hook configured for', erpURL);
+    return {success: true};
+});
+
+// Return the preload path for ERP webview
+ipcMain.handle('erp-get-preload-path', () => {
+    return pathToFileURL(path.join(__dirname, 'erp-preload.js')).href;
 });
 
 // ─── IPC: Screenshot with overlay window (WeChat-style) ─────────────────
@@ -257,6 +452,25 @@ if (!gotTheLock) {
 
         createMainWindow(coldStartDeepLink);
         createTray();
+
+        // Initialize ERP hardware services
+        initERPServices();
+
+        // Auto-connect scale if configured
+        if (erpStore.get('autoConnectScale') && scaleService) {
+            const lastPort = erpStore.get('lastScalePort') as string;
+            const lastOpts = erpStore.get('lastScaleOptions') as any;
+            if (lastPort) {
+                setTimeout(async () => {
+                    try {
+                        await scaleService.connect(lastPort, lastOpts || {});
+                        console.log('[erp] Auto-connected scale on', lastPort);
+                    } catch (err) {
+                        console.warn('[erp] Auto-connect scale failed:', err);
+                    }
+                }, 3000);
+            }
+        }
 
         // ─── Screenshot shortcut management ─────────────────────────────
         let currentShortcutAccelerator = 'CommandOrControl+Alt+A';

@@ -78,4 +78,12 @@ contextBridge.exposeInMainWorld('dedalix', {
         ipcRenderer.on('screenshot-completed', handler);
         return () => ipcRenderer.removeListener('screenshot-completed', handler);
     },
+
+    // ─── ERP: Notify main process to set up webview credentials ────
+    setErpCredentials: (credentials: {api_key: string; api_secret: string; erp_url: string}): Promise<{success: boolean}> =>
+        ipcRenderer.invoke('erp-set-credentials', credentials),
+
+    // Get the preload script path for ERP webview
+    getErpPreloadPath: (): Promise<string> =>
+        ipcRenderer.invoke('erp-get-preload-path'),
 });
